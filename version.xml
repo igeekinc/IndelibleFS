@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="IndelibleFS Version">
+    <target name="setRevision" depends="setBuildRev">
+        <property name="majorRev" value="0"/>
+	<property name="minorRev" value="1"/>
+	<property name="pointRev" value="0"/>
+	<property name="revision" value="${majorRev}.${minorRev}.${pointRev}"/>
+	<property name="fullRevision" value="${revision}-${buildRev}"/>
+    </target>
+</project>

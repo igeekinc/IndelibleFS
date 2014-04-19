@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="IndelibleFS" default="buildJar" basedir=".">
+	<description>
+        Build file for iGeek, Inc. Indelible FS Storage Management System
+	</description>
+	<import file="version.xml"/>
+	<import file="../iGeekCommon/build-common.xml"/>
+	<!-- set global properties for this build -->
+	<target name="localProperties">
+		<property name="testData" location="testdata"/>
+		<property name="testTemp" location="${output}/testTemp"/>
+		<property name="jarName" value="IndelibleFS.jar"/>
+		<property name="testsJarName" value="IndelibleFSTests.jar"/>
+		<path id="localTestLibs">
+			<pathelement location="/System/Library/Java" />
+			<pathelement location="${javaObjs}"/>
+			<pathelement location="../Indelible/separatetestlibs/activation.jar" />
+			<pathelement location="../Indelible/separatetestlibs/mailapi.jar" />
+			<pathelement location="../Indelible/separatetestlibs/smtp.jar" />
+			<fileset dir="testlibs">
+				<include name="*.jar"/>
+			</fileset>
+		</path>
+	</target>
+	<target name="setupOtherProjects">
+		<addOtherProject otherProjectName="iGeekCommon" classPathRefID="localLibs"/>
+		<addOtherProject otherProjectName="IndelibleFSClient" classPathRefID="localLibs"/>
+		<addOtherProject otherProjectName="IndelibleServerCore" classPathRefID="localLibs"/>
+		<addOtherProject otherProjectName="Luwak" classPathRefID="localLibs"/>
+	</target>
+	<target name="runTests" depends="testsCompile" description="Execute tests">
+		<junit>
+			<formatter type="plain"/>
+			<sysproperty key="com.igeekinc.tests.testdata" value="${testData}"/>
+			<sysproperty key="com.igeekinc.tests.testtemp" value="${testTemp}"/>
+			<classpath>
+				<path refid="libs"/>
+				<pathelement location="${javaObjs}"/>
+				<pathelement location="${testObjs}"/>
+			</classpath>
+			<batchtest fork="yes" todir="${testOutputDir}">
+				<fileset dir="${testObjs}"/>
+			</batchtest>
+		</junit>
+	</target>
+	<target name="rmic" depends="iGeekBuildCommon.rmic">
+		<!-- We want to not download code from the server but not include all of the server classes into IndelibleFSClient.
+		The solution for the moment is to copy the stubs into IndelibleFSClient -->
+		<copy todir="../IndelibleFSClient/rmicSrc">
+			<fileset dir="rmicSrc">
+				<include name="**/*Stub.java"/>
+			</fileset>
+		</copy>
+	</target>
+	<target name="cleanRMIC" depends="iGeekBuildCommon.cleanRMIC">
+		<delete quiet="true">
+			<fileset dir="../IndelibleFSClient/rmicSrc">
+				<include name="**/*_Stub.java"/>
+				<include name="**/*_Skel.java"/>
+			</fileset>
+			<fileset dir="../IndelibleFSClient/rmicSrc">
+				<include name="**/*_Stub.java"/>
+				<include name="**/*_Skel.java"/>
+			</fileset>
+			<fileset dir="../IndelibleFSClient/rmicSrc">
+				<include name="**/*_Stub.class"/>
+				<include name="**/*_Skel.class"/>
+			</fileset>
+		</delete>
+	</target>
+	<target name="buildJar" depends="init, otherBuilds, iGeekBuildCommon.buildJar"/>
+</project>
