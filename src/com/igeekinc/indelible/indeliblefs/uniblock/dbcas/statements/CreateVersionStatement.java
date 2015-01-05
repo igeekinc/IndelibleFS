@@ -23,8 +23,8 @@ import java.sql.SQLException;
 import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
-import com.igeekinc.indelible.indeliblefs.uniblock.CASServer;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnection;
+import com.igeekinc.indelible.indeliblefs.uniblock.LocalCASServer;
 import com.igeekinc.util.logging.ErrorLogMessage;
 
 public class CreateVersionStatement extends StatementWrapper
@@ -45,7 +45,7 @@ public class CreateVersionStatement extends StatementWrapper
         }
 	}
 	
-	public synchronized IndelibleVersion createVersion(CASServer manager, CASServerConnection connection)
+	public synchronized IndelibleVersion createVersion(LocalCASServer manager, CASServerConnection connection)
     {
         ResultSet transactionIDRS;
         try

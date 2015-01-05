@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.rmi.RemoteException;
 import java.util.ArrayList;
 
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
+import com.igeekinc.indelible.indeliblefs.IndelibleFSServer;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnectionIF;
 import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.EntityID;
@@ -30,11 +30,11 @@ import com.igeekinc.indelible.oid.IndelibleFSObjectID;
 class ReplicatedServerInfo
 {
 	private EntityID serverID;
-    private IndelibleFSServerProxy server;
+    private IndelibleFSServer server;
     private CASServerConnectionIF connection;
     private ArrayList<CASCollectionID>replicationCollectionIDs;
     
-    public ReplicatedServerInfo(IndelibleFSServerProxy server, CASServerConnectionIF connection) throws IOException
+    public ReplicatedServerInfo(IndelibleFSServer server, CASServerConnectionIF connection) throws IOException
     {
         this.server = server;
         this.connection = connection;
@@ -49,7 +49,7 @@ class ReplicatedServerInfo
 	}
 
 
-	public IndelibleFSServerProxy getServer()
+	public IndelibleFSServer getServer()
     {
         return server;
     }

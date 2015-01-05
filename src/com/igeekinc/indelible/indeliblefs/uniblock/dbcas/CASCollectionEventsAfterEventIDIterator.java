@@ -22,6 +22,7 @@ import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
 import com.igeekinc.util.logging.ErrorLogMessage;
+import com.igeekinc.indelible.indeliblefs.uniblock.CASServerInternal;
 
 public class CASCollectionEventsAfterEventIDIterator extends CASCollectionEventIterator
 {
@@ -43,8 +44,8 @@ public class CASCollectionEventsAfterEventIDIterator extends CASCollectionEventI
 				}
 				else
 				{
-					cachedEvents = connection.getCASServer().getCollectionEventsAfterEventID(((DBCASCollectionConnection)connection).getServerConnection(), 
-							connection.getCollection().getID(), lastEventID, 1000);
+					cachedEvents = ((CASServerInternal)connection.getCASServer()).getCollectionEventsAfterEventID(((DBCASCollectionConnection)connection).getServerConnection(), 
+							connection.getCollectionID(), lastEventID, 1000);
 					offset = 0;
 				}
 			} catch (IOException e)

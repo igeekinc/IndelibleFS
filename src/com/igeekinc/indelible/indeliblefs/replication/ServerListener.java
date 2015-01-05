@@ -20,24 +20,26 @@ import java.io.IOException;
 
 import org.apache.log4j.Logger;
 
+import com.igeekinc.indelible.indeliblefs.IndelibleFSServer;
 import com.igeekinc.indelible.indeliblefs.events.IndelibleEvent;
 import com.igeekinc.indelible.indeliblefs.events.IndelibleEventListener;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnectionIF;
 import com.igeekinc.indelible.indeliblefs.uniblock.CollectionCreatedEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.CollectionNotFoundException;
+import com.igeekinc.indelible.oid.EntityID;
+import com.igeekinc.util.logging.DebugLogMessage;
 import com.igeekinc.util.logging.ErrorLogMessage;
 
 class ServerListener implements IndelibleEventListener
 {
-	IndelibleFSServerProxy addedServer;
+	IndelibleFSServer addedServer;
 	ReplicationManager replicationManager;
 	CASServerConnectionIF serverConn;
 	Logger logger;
 	
-	public ServerListener(IndelibleFSServerProxy addedServer, ReplicationManager replicationManager, CASServerConnectionIF sourceConnection)
+	public ServerListener(IndelibleFSServer addedServer, ReplicationManager replicationManager, CASServerConnectionIF sourceConnection)
 	{
 		this.addedServer = addedServer;
 		this.replicationManager = replicationManager;
@@ -51,15 +53,17 @@ class ServerListener implements IndelibleEventListener
 		if (event instanceof CollectionCreatedEvent)
 		{
 			CollectionCreatedEvent collectionCreatedEvent = (CollectionCreatedEvent)event;
+			logger.debug(new DebugLogMessage("Got collectionCreatedEvent for "+collectionCreatedEvent.getCollectionID()+" ("+collectionCreatedEvent.getEventID()+")"));
 			try
 			{
 				ReplicatedServerInfo serverInfo;
-				serverInfo = replicationManager.replicatedServers.get(serverConn.getServerID());
+				EntityID serverID = serverConn.getServerID();
+				serverInfo = replicationManager.replicatedServers.get(serverID);
 				if (serverInfo == null)
 					serverInfo = new ReplicatedServerInfo(addedServer, serverConn);
-				if (replicationManager.addCollection(serverConn.getServerID(), serverConn, collectionCreatedEvent.getCollectionID(), serverInfo))
+				if (replicationManager.addCollection(serverID, serverConn, collectionCreatedEvent.getCollectionID(), serverInfo))
 				{
-					replicationManager.replicatedServers.put(serverConn.getServerID(), serverInfo);
+					replicationManager.replicatedServers.put(serverID, serverInfo);
 				}
 			} catch (CollectionNotFoundException e)
 			{

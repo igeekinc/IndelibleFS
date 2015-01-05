@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
+import java.net.InetSocketAddress;
 import java.rmi.RemoteException;
 import java.util.Date;
 import java.util.HashMap;
@@ -41,7 +42,8 @@ import com.igeekinc.indelible.indeliblefs.exceptions.FileExistsException;
 import com.igeekinc.indelible.indeliblefs.exceptions.ForkNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.ObjectNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSFirehoseClient;
 import com.igeekinc.indelible.indeliblefs.remote.CreateDirectoryInfoRemote;
 import com.igeekinc.indelible.indeliblefs.remote.CreateFileInfoRemote;
 import com.igeekinc.indelible.indeliblefs.remote.IndelibleDirectoryNodeRemote;
@@ -65,7 +67,7 @@ import com.igeekinc.util.SHA1HashID;
 public class IndelibleFSServerVersionsTest extends TestCase
 {
 	private static final int kSmallDirTreeFileSize = 64*1024;
-	private static IndelibleFSServerProxy fsServer;
+	private static IndelibleFSServer fsServer;
     private static IndelibleFSVolumeIF testVolume;
     private static IndelibleDirectoryNodeIF root;
     private static IndelibleServerConnectionIF connection;
@@ -99,7 +101,7 @@ public class IndelibleFSServerVersionsTest extends TestCase
 
     		EntityAuthenticationClient.getEntityAuthenticationClient().trustServer(securityServer);
     		IndelibleFSClient.start(null, serverProperties);
-    		IndelibleFSServerProxy[] servers = new IndelibleFSServerProxy[0];
+    		IndelibleFSServer[] servers = new IndelibleFSServer[0];
 
     		while(servers.length == 0)
     		{
@@ -114,8 +116,8 @@ public class IndelibleFSServerVersionsTest extends TestCase
     			GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
     			GeneratorID testBaseID = genIDFactory.createGeneratorID();
     			ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-    			DataMoverSource.init(oidFactory);
     			DataMoverReceiver.init(oidFactory);
+    			DataMoverSource.init(oidFactory, new InetSocketAddress(0), null);
     			dataMoverInitialized = true;
     		}
     		connection = fsServer.open();
@@ -169,7 +171,7 @@ public class IndelibleFSServerVersionsTest extends TestCase
     		IndelibleVersion curVersion = versions.next();
 			IndelibleFileNodeIF curVersionFile = curTestFile.getVersion(curVersion, RetrieveVersionFlags.kExact);
     		assertNotNull(curVersionFile);
-    		IndelibleVersion checkVersion = curVersionFile.getVersion();
+    		IndelibleVersion checkVersion = curVersionFile.getCurrentVersion();
 			assertEquals(curVersion, checkVersion);
     		IndelibleFSForkIF testReadFork = curVersionFile.getFork("data", false);
     		BufferedReader br = new BufferedReader(new InputStreamReader(new IndelibleFSForkRemoteInputStream(testReadFork)));

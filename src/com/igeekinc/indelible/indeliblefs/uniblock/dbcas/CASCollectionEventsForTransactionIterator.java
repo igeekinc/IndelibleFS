@@ -41,7 +41,7 @@ public class CASCollectionEventsForTransactionIterator extends CASCollectionEven
 			try
 			{
 				cachedEvents = ((DBCASServer)connection.getCASServer()).getCollectionEventsAfterEventIDForTransaction(((DBCASCollectionConnection)connection).getServerConnection(), 
-						connection.getCollection().getID(), lastEventID, 1000, transaction);
+						connection.getCollectionID(), lastEventID, 1000, transaction);
 				offset = 0;
 			} catch (IOException e)
 			{

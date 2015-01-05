@@ -16,14 +16,12 @@
  
 package com.igeekinc.indelible.indeliblefs.uniblock.dbcas;
 
-import java.sql.Blob;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
 import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.uniblock.CASSegmentIDIterator;
-import com.igeekinc.indelible.oid.CASSegmentID;
 import com.igeekinc.indelible.oid.ObjectID;
 import com.igeekinc.indelible.oid.ObjectIDFactory;
 import com.igeekinc.util.logging.ErrorLogMessage;
@@ -53,15 +51,15 @@ public class DBCASSegmentIDIterator implements CASSegmentIDIterator
 	}
 
 	@Override
-	public CASSegmentID next()
+	public ObjectID next()
 	{
-		CASSegmentID returnSegmentID = null;
+		ObjectID returnSegmentID = null;
 		try
 		{
-			Blob idBlob = setToIterate.getBlob(1);
-			if (idBlob.length() == ObjectID.kTotalBytes)
+			byte [] idBlob = setToIterate.getBytes(1);
+			if (idBlob.length == ObjectID.kTotalBytes)
 			{
-				returnSegmentID = (CASSegmentID) ObjectIDFactory.reconstituteFromBytes(idBlob.getBytes(0, ObjectID.kTotalBytes));
+				returnSegmentID = ObjectIDFactory.reconstituteFromBytes(idBlob);
 			}
 			hasNext = setToIterate.next();
 		} catch (SQLException e)

@@ -19,6 +19,7 @@ package com.igeekinc.indelible.indeliblefs.replication;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.StringTokenizer;
 
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
@@ -30,9 +31,9 @@ public class ReplicationVolumeInfo
 {
     private CASCollectionID volumeID;
     private CASCollectionConnection volume;
-    private HashMap<String, Serializable> properties;
+    private Map<String, Serializable> properties;
     
-    public ReplicationVolumeInfo(CASCollectionID volumeID, CASCollectionConnection volume, HashMap<String, Serializable> properties)
+    public ReplicationVolumeInfo(CASCollectionID volumeID, CASCollectionConnection volume, Map<String, Serializable> properties)
     {
         this.volumeID = volumeID;
         this.volume = volume;

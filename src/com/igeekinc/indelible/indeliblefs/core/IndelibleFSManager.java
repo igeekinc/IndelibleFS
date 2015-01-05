@@ -22,8 +22,11 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Properties;
 import java.util.Set;
 
@@ -35,6 +38,7 @@ import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
 import com.igeekinc.indelible.indeliblefs.exceptions.VolumeNotFoundException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
+import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
 import com.igeekinc.indelible.indeliblefs.security.SessionAuthentication;
 import com.igeekinc.indelible.indeliblefs.server.IndelibleFSServerInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
@@ -56,15 +60,21 @@ public class IndelibleFSManager
     protected Connection dbConnection;
     protected IndelibleFSServerInfo info;
     protected CASServerConnectionIF workConnection;
+    protected IndelibleFSManagerConnection workIFSConnection;
     protected long lastVersionTime;
     protected int lastVersionUniquifier;
+    protected ArrayList<CASCollectionID>brokenVolumes = new ArrayList<CASCollectionID>();
     
     public IndelibleFSManager(CASServerInternal storageServer)
-    throws IOException, SQLException
+    throws IOException, SQLException, PermissionDeniedException
     {
         volumes = new Hashtable<IndelibleFSObjectID, CASCollectionID> ();
         this.storageServer = storageServer;
-        storageServer.setSecurityServerID(EntityAuthenticationClient.getEntityAuthenticationClient().listTrustedServers()[0].getEntityID());
+        EntityAuthenticationServer[] trustedServers = EntityAuthenticationClient.getEntityAuthenticationClient().listTrustedServers();
+        if (trustedServers == null || trustedServers.length < 1)
+        	throw new InternalError("No trusted entity authentication servers!");
+		storageServer.setSecurityServerID(trustedServers[0].getEntityID());
+		workIFSConnection = open(EntityAuthenticationClient.getEntityAuthenticationClient().getEntityID());
         workConnection = storageServer.open(EntityAuthenticationClient.getEntityAuthenticationClient().getEntityID());
         if (storageServer instanceof com.igeekinc.indelible.indeliblefs.uniblock.dbcas.DBCASServer)
         	dbConnection = ((com.igeekinc.indelible.indeliblefs.uniblock.dbcas.DBCASServerConnection)workConnection).getStatements().getDBConnection();
@@ -109,42 +119,72 @@ public class IndelibleFSManager
 		});
     }
 
-    private synchronized void updateVolumeList() throws IOException
+    @SuppressWarnings("unchecked")
+	private synchronized void updateVolumeList() throws IOException
     {
         CASCollectionID [] collections = workConnection.listCollections();
         for (int curVolumeNum = 0; curVolumeNum < collections.length; curVolumeNum++)
         {
-            try
+        	boolean notBroken = false;
+            CASCollectionID curCollectionID = collections[curVolumeNum];
+            if (!brokenVolumes.contains(curCollectionID))
             {
-                CASCollectionConnection curCollectionConnection = workConnection.getCollectionConnection(collections[curVolumeNum]);
-                IndelibleFSObjectID curVolumeID = retrieveVolumeIDFromCollection(curCollectionConnection, workConnection);
-                if (curVolumeID != null)
-                    volumes.put(curVolumeID, curCollectionConnection.getCollection().getID());
-                
-            } 
-            catch (CollectionNotFoundException e)
-            {
-                Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-            } catch (IOException e)
-            {
-                Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-            } catch (ClassNotFoundException e)
-            {
-                throw new IOException("Unknown class ");
-            } catch (SQLException e)
-            {
-                Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-            } catch (PermissionDeniedException e)
-			{
-				Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-			}
+            	try
+            	{
+            		CASCollectionConnection curCollectionConnection = workConnection.openCollectionConnection(curCollectionID);
+            		IndelibleFSObjectID curVolumeID = retrieveVolumeIDFromCollection(curCollectionConnection, workConnection);
+            		if (curVolumeID != null)
+            		{
+            			retrieveVolumeFromCollection(curCollectionConnection, workIFSConnection);	// Make sure the volume is retrievable
+            			volumes.put(curVolumeID, curCollectionConnection.getCollectionID());
+            		}
+        			notBroken = true;	// If we retrieved it successfully or if it's not a volume collection, it's "notBroken" and we won't add it to the broken list
+            	} 
+            	catch (CollectionNotFoundException e)
+            	{
+            		Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+            	} catch (IOException e)
+            	{
+            		Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+            	} catch (ClassNotFoundException e)
+            	{
+            		throw new IOException("Unknown class ");
+            	} catch (SQLException e)
+            	{
+            		Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+            	} catch (PermissionDeniedException e)
+            	{
+            		Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+            	}
+            	if (!notBroken)
+            	{
+            		Logger.getLogger(getClass()).error(new ErrorLogMessage("Marking collection {0} as broken", new Serializable[]{curCollectionID}));
+            		brokenVolumes.add(curCollectionID);
+            	}
+            }
+        }
+        for (Entry<IndelibleFSObjectID, CASCollectionID> checkEntry:volumes.entrySet().toArray((Entry<IndelibleFSObjectID, CASCollectionID>[])new Entry[volumes.values().size()]))
+        {
+        	boolean found = false;
+        	for (int checkCollectionNum = 0; checkCollectionNum < collections.length; checkCollectionNum++)
+        	{
+        		if (collections[checkCollectionNum].equals(checkEntry.getValue()))
+        		{
+        			found = true;
+        			break;
+        		}
+        	}
+        	if (!found)
+        	{
+        		volumes.remove(checkEntry.getKey());
+        	}
         }
     }
     
     private IndelibleFSObjectID retrieveVolumeIDFromCollection(
             CASCollectionConnection curCollection, CASServerConnectionIF workConnection2) throws IOException, ClassNotFoundException, SQLException, PermissionDeniedException
     {
-    	HashMap<String, Serializable>fsCASMD = curCollection.getMetaDataResource(IndelibleFSCASVolume.kVolumeMetaDataPropertyName);
+    	Map<String, Serializable>fsCASMD = curCollection.getMetaDataResource(IndelibleFSCASVolume.kVolumeMetaDataPropertyName);
         if (fsCASMD != null)
         {
             Object curObject = fsCASMD.get(IndelibleFSCASVolume.kVolumeInfoPropertyName);
@@ -160,14 +200,14 @@ public class IndelibleFSManager
     private IndelibleFSVolume retrieveVolumeFromCollection(CASCollectionID curCollectionID, IndelibleFSManagerConnection workConnection) 
     throws IOException, ClassNotFoundException, SQLException, CollectionNotFoundException, PermissionDeniedException
     {
-        CASCollectionConnection curCollection = workConnection.getCASConnection().getCollectionConnection(curCollectionID);
+        CASCollectionConnection curCollection = workConnection.getCASConnection().openCollectionConnection(curCollectionID);
         return retrieveVolumeFromCollection(curCollection, workConnection);
     }
     
     private IndelibleFSVolume retrieveVolumeFromCollection(CASCollectionConnection curCollection, IndelibleFSManagerConnection workConnection) 
     throws IOException, ClassNotFoundException, SQLException, PermissionDeniedException
     {
-    	HashMap<String, Serializable>fsCASMD = curCollection.getMetaDataResource(IndelibleFSCASVolume.kVolumeMetaDataPropertyName);
+    	Map<String, Serializable>fsCASMD = curCollection.getMetaDataResource(IndelibleFSCASVolume.kVolumeMetaDataPropertyName);
         if (fsCASMD != null)
         {
             Object curObject = fsCASMD.get(IndelibleFSCASVolume.kVolumeInfoPropertyName);
@@ -191,16 +231,28 @@ public class IndelibleFSManager
     
     public IndelibleFSManagerConnection open(EntityID authenticatedID)
     {
-        CASServerConnection newCASConnection = (CASServerConnection) storageServer.open(authenticatedID);
+        CASServerConnection newCASConnection;
+		try
+		{
+			newCASConnection = (CASServerConnection) storageServer.open(authenticatedID);
+		} catch (PermissionDeniedException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			return null;
+		} catch (IOException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			return null;
+		}
         IndelibleFSManagerConnection returnConnection = new IndelibleFSManagerConnection(this, newCASConnection);
         return returnConnection;
     }
     
     public IndelibleFSManagerConnection open(EntityAuthentication authenticatedID)
     {
-        CASServerConnection newCASConnection = (CASServerConnection) storageServer.open(authenticatedID.getEntityID());
         try
         {
+        	CASServerConnection newCASConnection = (CASServerConnection) storageServer.open(authenticatedID.getEntityID());
         	SessionAuthentication sessionAuthentication = newCASConnection.getDataMoverSession().addAuthorizedClient(authenticatedID);
             IndelibleFSManagerConnection returnConnection = new IndelibleFSManagerConnection(this, newCASConnection);
             returnConnection.setSessionAuthentication(sessionAuthentication);
@@ -210,8 +262,6 @@ public class IndelibleFSManager
         {
         	throw new InternalError("Could not authorize client");
         }
-
-
     }
     
 
@@ -250,7 +300,7 @@ public class IndelibleFSManager
             Hashtable<IndelibleFSObjectID, CASCollectionID> volumeSetToUpdate = connection.getVolumesForTransaction();
             if (volumeSetToUpdate == null)
                 volumeSetToUpdate = volumes;
-            volumeSetToUpdate.put(volumeID, volumeCollectionConnection.getCollection().getID());
+            volumeSetToUpdate.put(volumeID, volumeCollectionConnection.getCollectionID());
             if (madeTransaction)
                 connection.commit();
             completed = true;
@@ -263,7 +313,47 @@ public class IndelibleFSManager
         return newVolume;
     }
 
-
+    protected synchronized void deleteVolume(IndelibleFSManagerConnection connection, IndelibleFSObjectID deleteVolumeID)
+    throws VolumeNotFoundException, PermissionDeniedException, IOException
+    {
+        CASServerConnectionIF createConnection = connection.getCASConnection();
+        boolean madeTransaction = false;
+        try
+        {
+        	if (!connection.inTransaction())
+        	{
+        		connection.startTransaction();
+        		madeTransaction = true;
+        	}
+        	Hashtable<IndelibleFSObjectID, CASCollectionID> volumeSetToCheck = connection.getVolumesForTransaction();
+        	if (volumeSetToCheck == null)
+        		volumeSetToCheck = volumes;
+        	CASCollectionID collectionID = volumeSetToCheck.get(deleteVolumeID);
+        	if (collectionID == null)
+        		throw new VolumeNotFoundException(deleteVolumeID, "Volume ID not found");
+        	volumeSetToCheck.remove(deleteVolumeID);
+        	try
+        	{
+        		createConnection.deleteCollection(collectionID);
+        	} catch (CollectionNotFoundException e)
+        	{
+        		throw new VolumeNotFoundException(deleteVolumeID, "Volume ID not found");
+        	}
+        	if (madeTransaction)
+        	{
+        		connection.commit();
+        		madeTransaction = false;
+        	}
+        }
+        finally
+        {
+        	if (madeTransaction)
+        		connection.rollback();	// Some kind of an error, so rollback the changes that were made
+        								// We don't worry about removing the volume from the volume set but
+        								// the delete collection failed - if we couldn't find the collection
+        								// then it shouldn't be in the volume list anyhow
+        }
+    }
     
     protected synchronized IndelibleFSVolume retrieveVolume(IndelibleFSManagerConnection connection, IndelibleFSObjectID retrieveVolumeID)
     throws VolumeNotFoundException
@@ -372,7 +462,14 @@ public class IndelibleFSManager
 
     public EntityID getServerID()
     {
-        return storageServer.getServerID();
+        try
+		{
+			return storageServer.getServerID();
+		} catch (IOException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			return null;
+		}
     }
 
     public EntityID getSecurityServerID()

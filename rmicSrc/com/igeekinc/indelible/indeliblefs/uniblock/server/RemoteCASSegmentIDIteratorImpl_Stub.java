@@ -10,11 +10,11 @@ public final class RemoteCASSegmentIDIteratorImpl_Stub
     private static final java.rmi.server.Operation[] operations = {
 	new java.rmi.server.Operation("void close()"),
 	new java.rmi.server.Operation("boolean hasNext()"),
-	new java.rmi.server.Operation("com.igeekinc.indelible.oid.CASSegmentID next()"),
+	new java.rmi.server.Operation("com.igeekinc.indelible.oid.ObjectID next()"),
 	new java.rmi.server.Operation("void remove()")
     };
     
-    private static final long interfaceHash = -5618111967574468873L;
+    private static final long interfaceHash = 2210115608068078655L;
     
     // constructors
     public RemoteCASSegmentIDIteratorImpl_Stub() {
@@ -70,16 +70,16 @@ public final class RemoteCASSegmentIDIteratorImpl_Stub
     }
     
     // implementation of next()
-    public com.igeekinc.indelible.oid.CASSegmentID next()
+    public com.igeekinc.indelible.oid.ObjectID next()
 	throws java.rmi.RemoteException
     {
 	try {
 	    java.rmi.server.RemoteCall call = ref.newCall((java.rmi.server.RemoteObject) this, operations, 2, interfaceHash);
 	    ref.invoke(call);
-	    com.igeekinc.indelible.oid.CASSegmentID $result;
+	    com.igeekinc.indelible.oid.ObjectID $result;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
-		$result = (com.igeekinc.indelible.oid.CASSegmentID) in.readObject();
+		$result = (com.igeekinc.indelible.oid.ObjectID) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling return", e);
 	    } catch (java.lang.ClassNotFoundException e) {

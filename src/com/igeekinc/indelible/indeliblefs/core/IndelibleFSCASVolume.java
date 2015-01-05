@@ -23,6 +23,7 @@ import java.io.ObjectOutputStream;
 import java.io.Serializable;
 import java.sql.SQLException;
 import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.log4j.Logger;
 
@@ -33,7 +34,9 @@ import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDMemoryDataDescriptor;
+import com.igeekinc.indelible.indeliblefs.uniblock.CASServerInternal;
 import com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.IndelibleFSObjectID;
 import com.igeekinc.indelible.oid.ObjectIDFactory;
@@ -58,7 +61,7 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
     throws IOException, SQLException
     {
         super(inOID, version, connection);
-        oidFactory = inCollection.getCASServer().getOIDFactory();
+        oidFactory = ((CASServerInternal)inCollection.getCASServer()).getOIDFactory();
         collectionConnection = inCollection;
         setConnection(connection);
         if (rootOID == null)
@@ -99,7 +102,7 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
     protected void setCollection(CASCollectionConnection inCollection) throws IOException
     {
         collectionConnection = inCollection;
-        oidFactory = inCollection.getCASServer().getOIDFactory();
+        oidFactory = ((CASServerInternal)inCollection.getCASServer()).getOIDFactory();
         try
 		{
 			root = (IndelibleDirectoryNode) getObjectByID(rootOID);
@@ -122,6 +125,7 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
         IndelibleFileNode newFileNode = new IndelibleFileNode(this, (IndelibleFSObjectID)oidFactory.getNewOID(IndelibleFileNode.class),
                 connection.getVersion());
         newFileNode.setDirty();
+        newFileNode.modified();
         return newFileNode;
     }
     
@@ -172,7 +176,14 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
         }
         if (returnNode == null)
         {
-        	DataVersionInfo nodeDescriptor = collectionConnection.retrieveSegment(id, version, flags);
+        	DataVersionInfo nodeDescriptor = null;
+			try
+			{
+				nodeDescriptor = collectionConnection.retrieveSegment(id, version, flags);
+			} catch (SegmentNotFound e1)
+			{
+				Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e1);
+			}
         	if (nodeDescriptor != null)
         	{
         		ObjectInputStream readStream = new ObjectInputStream(nodeDescriptor.getDataDescriptor().getInputStream());
@@ -262,13 +273,7 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
         }
         if (returnNode == null)
         {
-        	try
-			{
-				collectionConnection.retrieveSegmentAsync(id, new GetObjectByIDAsyncCompletionHandler(this, future), null);
-			} catch (SegmentNotFound e)
-			{
-				throw new ObjectNotFoundException("Could not find segment "+id);
-			}
+        	collectionConnection.retrieveSegmentAsync(id, new GetObjectByIDAsyncCompletionHandler(this, future), null);
         }
         else
         {
@@ -343,7 +348,14 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
         storeStream.writeObject(storeObject);
         storeStream.close();
         CASIDDataDescriptor storeDescriptor = new CASIDMemoryDataDescriptor(baos.toByteArray());
-        collectionConnection.storeVersionedSegment(storeObject.getObjectID(), storeDescriptor);
+        try
+		{
+			collectionConnection.storeVersionedSegment(storeObject.getObjectID(), storeDescriptor);
+		} catch (SegmentExists e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			throw new IOException("Segment already exists");	// segment exists is low-level so we'll just make it into an IOException here
+		}
     }
     
     public void updateObject(IndelibleFSObject updateObject) throws IOException
@@ -371,7 +383,14 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
         storeStream.writeObject(updateObject);
         storeStream.close();
         CASIDDataDescriptor storeDescriptor = new CASIDMemoryDataDescriptor(baos.toByteArray());
-        collectionConnection.storeVersionedSegment(updateObject.getObjectID(), storeDescriptor);
+        try
+		{
+			collectionConnection.storeVersionedSegment(updateObject.getObjectID(), storeDescriptor);
+		} catch (SegmentExists e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			throw new IOException("Segment already exists");	// segment exists is low-level so we'll just make it into an IOException here
+		}
     }
     
     @Override
@@ -411,7 +430,7 @@ public class IndelibleFSCASVolume extends IndelibleFSVolume
 			for (String curKey:mdKeys)
 			{
 				returnBuffer.append(curKey+"\n");
-				HashMap<String, Object>resourceData = getMetaDataResource(curKey);
+				Map<String, Object>resourceData = getMetaDataResource(curKey);
 				for (String curResourceKey:resourceData.keySet())
 				{
 					returnBuffer.append(curResourceKey+" = "+resourceData.get(curResourceKey)+"\n");

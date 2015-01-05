@@ -23,7 +23,7 @@ import com.igeekinc.indelible.indeliblefs.security.IndelibleEntityAuthentication
 import com.igeekinc.indelible.indeliblefs.security.SSLUnicastObject;
 import com.igeekinc.indelible.indeliblefs.server.RemoteCASSegmentIDIterator;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASSegmentIDIterator;
-import com.igeekinc.indelible.oid.CASSegmentID;
+import com.igeekinc.indelible.oid.ObjectID;
 
 public class RemoteCASSegmentIDIteratorImpl extends SSLUnicastObject implements
 		RemoteCASSegmentIDIterator
@@ -44,7 +44,7 @@ public class RemoteCASSegmentIDIteratorImpl extends SSLUnicastObject implements
 	}
 
 	@Override
-	public CASSegmentID next() throws RemoteException
+	public ObjectID next() throws RemoteException
 	{
 		return localIterator.next();
 	}

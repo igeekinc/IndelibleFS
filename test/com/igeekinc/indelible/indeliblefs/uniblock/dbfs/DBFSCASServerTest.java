@@ -19,16 +19,18 @@ package com.igeekinc.indelible.indeliblefs.uniblock.dbfs;
 import java.io.File;
 import java.io.FilenameFilter;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.util.Arrays;
 
 import junit.framework.TestCase;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Logger;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
 
-import com.igeekinc.indelible.indeliblefs.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
@@ -182,8 +184,8 @@ public class DBFSCASServerTest extends TestCase
             GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
             GeneratorID testBaseID = genIDFactory.createGeneratorID();
             ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-            DataMoverSource.init(oidFactory);
             DataMoverReceiver.init(oidFactory);
+            DataMoverSource.init(oidFactory, new InetSocketAddress(0), new AFUNIXSocketAddress(new File("/tmp/dbfcst-socket")));
             dataMoverInitialized = true;
         }
         

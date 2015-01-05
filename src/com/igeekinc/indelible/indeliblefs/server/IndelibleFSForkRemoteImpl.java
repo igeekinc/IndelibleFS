@@ -38,7 +38,7 @@ public class IndelibleFSForkRemoteImpl extends UnicastRemoteObject implements
     protected IndelibleFSForkIF localFork;
     IndelibleFSServerConnectionImpl connection;
     Logger logger = Logger.getLogger(getClass());
-    protected IndelibleFSForkRemoteImpl(IndelibleFSForkIF coreFork, IndelibleFSServerConnectionImpl connection) throws RemoteException
+    protected IndelibleFSForkRemoteImpl(IndelibleFSForkIF coreFork, IndelibleFSServerConnectionImpl connection) throws IOException
     {
         super(0, connection.getClientSocketFactory(), connection.getServerSocketFactory());
         this.localFork = coreFork;
@@ -171,6 +171,14 @@ public class IndelibleFSForkRemoteImpl extends UnicastRemoteObject implements
 	@Override
 	public String getName() throws RemoteException
 	{
-		return localFork.getName();
+		try
+		{
+			return localFork.getName();
+		} catch (IOException e)
+		{
+			// TODO Auto-generated catch block
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			return null;
+		}
 	}
 }

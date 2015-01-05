@@ -22,6 +22,7 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.rmi.RemoteException;
 import java.security.InvalidKeyException;
 import java.security.KeyStoreException;
@@ -31,25 +32,24 @@ import java.security.SignatureException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 
-import com.igeekinc.indelible.indeliblefs.IndelibleFSClient;
-import com.igeekinc.indelible.indeliblefs.IndelibleFSServerAddedEvent;
-import com.igeekinc.indelible.indeliblefs.IndelibleFSServerListListener;
-import com.igeekinc.indelible.indeliblefs.IndelibleFSServerRemovedEvent;
+import com.igeekinc.indelible.indeliblefs.IndelibleFSServer;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
-import com.igeekinc.indelible.indeliblefs.proxies.RemoteCASServerProxy;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSServerAddedEvent;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSServerListListener;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSServerRemovedEvent;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
-import com.igeekinc.indelible.indeliblefs.server.IndelibleFSServerRemote;
+import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
-import com.igeekinc.indelible.indeliblefs.uniblock.CASServer;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnectionIF;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.CollectionNotFoundException;
 import com.igeekinc.indelible.oid.CASCollectionID;
@@ -63,6 +63,7 @@ import com.igeekinc.indelible.server.IndelibleServerPreferences;
 import com.igeekinc.util.MonitoredProperties;
 import com.igeekinc.util.logging.ErrorLogMessage;
 import com.igeekinc.util.logging.InfoLogMessage;
+import com.igeekinc.util.logging.WarnLogMessage;
 
 public class ReplicationManager extends IndelibleServer implements IndelibleFSServerListListener
 {
@@ -75,12 +76,12 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
     public static final String kVolumeReplicationServersPropertyName = "com.igeekinc.indeliblefs.ReplicationServers";
     protected HashMap<EntityID, ReplicatedServerInfo>replicatedServers = new HashMap<EntityID, ReplicatedServerInfo>();
     protected HashMap<CASCollectionID, HashMap<EntityID, ReplicationVolumeInfo>> replicationInfo = new HashMap<CASCollectionID, HashMap<EntityID, ReplicationVolumeInfo>>();
-    
+    protected HashMap<EntityID, CASServerConnectionIF>connectionsForServers = new HashMap<EntityID, CASServerConnectionIF>();
     protected Logger logger;
     protected MonitoredProperties replicationProperties;
     protected String defaultServerAddress;
     protected int defaultServerPort;
-    protected IndelibleFSServerProxy[] defaultServer;	// The default server as attached to various authentication servers
+    protected IndelibleFSServer[] defaultServer;	// The default server as attached to various authentication servers
     boolean addAll = true;	// Make this a settable property
 
     public ReplicationManager(MonitoredProperties replicationProperties, MonitoredProperties serverProperties) throws RemoteException
@@ -108,13 +109,13 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
     				while (!connected)
     				{
     					InetAddress defaultServerInetAddress = InetAddress.getByName(defaultServerAddress);
-    					IndelibleFSServerProxy [] checkServers = IndelibleFSClient.listServers();
-    					for (IndelibleFSServerProxy checkServer:checkServers)
+    					IndelibleFSServer [] checkServers = IndelibleFSClient.listServers();
+    					for (IndelibleFSServer checkServer:checkServers)
     					{
     						if (defaultServerInetAddress.equals(checkServer.getServerAddress()) /* && checkServer.getServerPort() == port // Need to figure out how to make this work later*/)
     						{
     							connected = true;
-    							defaultServer = new IndelibleFSServerProxy[]{checkServer};	// Eventually we need to deal with multiple authentication server domains properly
+    							defaultServer = new IndelibleFSServer[]{checkServer};	// Eventually we need to deal with multiple authentication server domains properly
     							break;
     						}
     					}
@@ -140,9 +141,10 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
     	}
     	logger = Logger.getLogger(getClass());
     	IndelibleFSClient.addIndelibleFSServerListListener(this);
-    	IndelibleFSServerProxy [] currentServers = IndelibleFSClient.listServers();
+    	IndelibleFSServer [] currentServers = IndelibleFSClient.listServers();
 		EntityID defaultServerID = null;
 		if (defaultServer != null && defaultServer.length > 0)
+		{
 			try
 			{
 				defaultServerID = defaultServer[0].getServerID();
@@ -151,14 +153,26 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 				Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
 				throw new InternalError("Could not get ID for default server");
 			}
-    	for (IndelibleFSServerProxy curServer:currentServers)
+		}
+		logger.warn(new WarnLogMessage("Adding current servers ({0})", new Serializable[]{currentServers.length}));
+    	for (IndelibleFSServer curServer:currentServers)
     	{
+    		logger.warn(new WarnLogMessage("Checking {0}", new Serializable[]{curServer.toString()}));
+
 			EntityID curServerID;
 			try
 			{
 				curServerID = curServer.getServerID();
 				if (defaultServer != null && defaultServer.length > 0 && !defaultServerID.equals(curServerID))
+				{
+		    		logger.warn(new WarnLogMessage("Adding {0}",  new Serializable[]{curServer.toString()}));
+
 	    			addServer(curServer);
+				}
+				else
+				{
+		    		logger.warn(new WarnLogMessage("{0} is the default server, skipping",  new Serializable[]{curServer.toString()}));
+				}
 			} catch (IOException e)
 			{
 				// TODO Auto-generated catch block
@@ -169,11 +183,11 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 
 	public void indelibleFSServerAdded(IndelibleFSServerAddedEvent addedEvent)
     {
-        IndelibleFSServerProxy addedServer = addedEvent.getAddedServer();
+        IndelibleFSServer addedServer = addedEvent.getAddedServer();
         addServer(addedServer); 
     }
 
-    private synchronized void addServer(IndelibleFSServerProxy addedServer)
+    private synchronized void addServer(IndelibleFSServer addedServer)
     {
         try
         {
@@ -190,23 +204,32 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
         } catch (IOException e)
         {
             Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-        }
+        } catch (PermissionDeniedException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+		}
     }
 
     boolean addCollection(EntityID serverID, CASServerConnectionIF serverConn, CASCollectionID curCollectionID, ReplicatedServerInfo serverInfo)
     		throws PermissionDeniedException, IOException, CollectionNotFoundException, AuthenticationFailureException
     {
-    	CASCollectionConnection curCollectionConn = serverConn.getCollectionConnection(curCollectionID);
+    	logger.debug("Added collection "+curCollectionID);
+    	CASCollectionConnection curCollectionConn = serverConn.openCollectionConnection(curCollectionID);
 
-		HashMap<String, Serializable>allReplicationProperties = curCollectionConn.getMetaDataResource(kReplicationManagerMDPropertyName);
+		Map<String, Serializable>allReplicationProperties = curCollectionConn.getMetaDataResource(kReplicationManagerMDPropertyName);
 		if (allReplicationProperties == null)
 			allReplicationProperties = new HashMap<String, Serializable>();
-		HashMap<String, Serializable>curReplicationProperties = (HashMap<String, Serializable>) allReplicationProperties.get(serverID.toString());
+		@SuppressWarnings("unchecked")
+		Map<String, Serializable>curReplicationProperties = (Map<String, Serializable>) allReplicationProperties.get(serverID.toString());
 		if (curReplicationProperties == null && addAll && defaultServer != null && defaultServer.length > 0)
 		{
+			logger.debug("Replication properties not set, creating");
 			curReplicationProperties = new HashMap<String, Serializable>();
 			curReplicationProperties.put(kVolumeReplicationServersPropertyName, defaultServer[0].getServerID().toString());
-			allReplicationProperties.put(serverID.toString(), curReplicationProperties);
+			if (curReplicationProperties instanceof Serializable)
+				allReplicationProperties.put(serverID.toString(), (Serializable)curReplicationProperties);
+			else
+				allReplicationProperties.put(serverID.toString(), new HashMap<String, Serializable>(curReplicationProperties));
 			
 			curCollectionConn.startTransaction();
 			curCollectionConn.setMetaDataResource(kReplicationManagerMDPropertyName, allReplicationProperties);
@@ -214,6 +237,7 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 		}
 		if (curReplicationProperties != null)
 		{
+			logger.debug("replication properties for "+curCollectionID+" = "+curReplicationProperties);
 			HashMap<EntityID, ReplicationVolumeInfo> replicationInfoByServer = replicationInfo.get(curCollectionID);
 			if (replicationInfoByServer == null)
 			{
@@ -235,17 +259,17 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 						{
 							try
 							{
-								replicateToConn = replicateToServerConn.getCollectionConnection(curCollectionID);
+								replicateToConn = replicateToServerConn.openCollectionConnection(curCollectionID);
 							} catch (CollectionNotFoundException e)
 							{
 								// Doesn't exist in the destination, create it
-								logger.info("Creating replicated colletction "+curCollectionID);
+								logger.info("Creating replicated collection "+curCollectionID);
 								replicateToConn = replicateToServerConn.addCollection(curCollectionID);
 								replicateToConn.startTransaction();
 								String [] mdNames = curCollectionConn.listMetaDataNames();
 								for (String curMDName:mdNames)
 								{
-									HashMap<String, Serializable>curMD = curCollectionConn.getMetaDataResource(curMDName);
+									Map<String, Serializable>curMD = curCollectionConn.getMetaDataResource(curMDName);
 									replicateToConn.setMetaDataResource(curMDName, curMD);
 								}
 								replicateToConn.commit();
@@ -284,26 +308,39 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
     }
     private CASServerConnectionIF getConnectionForServer(EntityID connectServer)
     {
-    	CASServerConnectionIF returnConnection = null;
-
-    	IndelibleFSServerProxy [] servers = IndelibleFSClient.listServers();
-    	for (IndelibleFSServerProxy checkServer:servers)
+    	synchronized(connectionsForServers)
     	{
-    		try
+    		CASServerConnectionIF returnConnection = connectionsForServers.get(connectServer);
+
+    		if (returnConnection == null)
     		{
-    			returnConnection = checkServer.openCASServer();
-    			if (returnConnection.getServerID().equals(connectServer))
+    			IndelibleFSServer [] servers = IndelibleFSClient.listServers();
+    			for (IndelibleFSServer checkServer:servers)
     			{
-    				break;
+    				try
+    				{
+    					if (checkServer.getServerID().equals(connectServer))
+    					{
+    						returnConnection = checkServer.openCASServer();
+    						if (returnConnection.getServerID().equals(connectServer))
+    						{
+    		    				connectionsForServers.put(returnConnection.getServerID(), returnConnection);
+    							break;
+    						}
+    						returnConnection.close();
+    						returnConnection = null;
+    					}
+    				} catch (IOException e)
+    				{
+    					Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+    				} catch (PermissionDeniedException e)
+    				{
+    					Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+    				}
     			}
-    			returnConnection.close();
-    			returnConnection = null;
-    		} catch (IOException e)
-    		{
-    			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
     		}
+    		return returnConnection;
     	}
-    	return returnConnection;
     }
 
 	private EntityID getEntityID()
@@ -313,7 +350,7 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 
 	public synchronized void indelibleFSServerRemoved(IndelibleFSServerRemovedEvent removedEvent)
     {
-		IndelibleFSServerProxy removedServer = removedEvent.getRemovedServer();
+		IndelibleFSServer removedServer = removedEvent.getRemovedServer();
         if (replicatedServers.containsKey(removedServer))
         {
             ReplicatedServerInfo removeServerInfo;
@@ -348,7 +385,7 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 
     public static final String kReplicationManagerEntityAuthenticationClientConfigFileName = "replicationManager-entityAuthenticationClientInfo";
 
-    public static void main(String [] args) throws IOException, UnrecoverableKeyException, InvalidKeyException, KeyStoreException, NoSuchAlgorithmException, CertificateException, IllegalStateException, NoSuchProviderException, SignatureException, AuthenticationFailureException
+    public static void main(String [] args) throws IOException, UnrecoverableKeyException, InvalidKeyException, KeyStoreException, NoSuchAlgorithmException, CertificateException, IllegalStateException, NoSuchProviderException, SignatureException, AuthenticationFailureException, InterruptedException
     {
         BasicConfigurator.configure();
         IndelibleServerPreferences.initPreferences(null);
@@ -360,10 +397,19 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
         File preferencesDir = new File(serverProperties.getProperty(IndelibleServerPreferences.kPreferencesDirPropertyName));
         File securityClientKeystoreFile = new File(preferencesDir, kReplicationManagerEntityAuthenticationClientConfigFileName);
         EntityAuthenticationClient.initializeEntityAuthenticationClient(securityClientKeystoreFile, oidFactory, serverProperties);
+        EntityAuthenticationClient.startSearchForServers();
+        EntityAuthenticationServer [] securityServers = new EntityAuthenticationServer[0];
+        while(securityServers.length == 0)
+        {
+            securityServers = EntityAuthenticationClient.listEntityAuthenticationServers();
+            if (securityServers.length == 0)
+                Thread.sleep(1000);
+        }
+        
         IndelibleFSClient.start(null, serverProperties);
 
-        DataMoverSource.init(oidFactory);
         DataMoverReceiver.init(oidFactory);
+        DataMoverSource.init(oidFactory, new InetSocketAddress(0), null);
         
         File replicationPreferencesFile = new File(preferencesDir, "com.igeekinc.indelible.replicationserver.properties");
         MonitoredProperties replicationProperties = new MonitoredProperties(null);;
@@ -442,5 +488,13 @@ public class ReplicationManager extends IndelibleServer implements IndelibleFSSe
 	{
 		// TODO Auto-generated method stub
 		return false;
+	}
+	
+	@Override
+	public File getAdditionalLoggingConfigFile(
+			MonitoredProperties serverProperties)
+	{
+		return new File(serverProperties.getProperty(IndelibleServerPreferences.kPreferencesDirPropertyName),
+		        "replicationMgrLoggingOptions.properties");
 	}
 }

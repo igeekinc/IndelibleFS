@@ -18,6 +18,7 @@ package com.igeekinc.indelible.indeliblefs;
 
 import java.io.File;
 import java.io.FilenameFilter;
+import java.net.InetSocketAddress;
 import java.security.Security;
 import java.util.Arrays;
 import java.util.Date;
@@ -27,12 +28,11 @@ import junit.framework.TestCase;
 import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.core.IndelibleDirectoryNode;
-import com.igeekinc.indelible.indeliblefs.core.IndelibleFSFork;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSManager;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSManagerConnection;
-import com.igeekinc.indelible.indeliblefs.core.IndelibleFileNode;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
@@ -182,8 +182,8 @@ public class IndelibleFSManagerTest extends TestCase
         DataMoverReceiver.shutdown();
         
         // Should have the CAS server and the security server and client configured by this point
-        DataMoverSource.init(server.getOIDFactory());   // TODO - move this someplace logical
         DataMoverReceiver.init(server.getOIDFactory());
+        DataMoverSource.init(server.getOIDFactory(), new InetSocketAddress(0), null);   // TODO - move this someplace logical
         fsManager = new IndelibleFSManager(server);
         managerConnection = fsManager.open((EntityID)null);
         testVolume = managerConnection.createVolume(null);

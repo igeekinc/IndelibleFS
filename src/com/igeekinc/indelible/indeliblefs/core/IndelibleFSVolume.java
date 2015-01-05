@@ -25,6 +25,7 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.Future;
 
@@ -463,7 +464,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
     {
         try
         {
-            HashMap<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
+            Map<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
             if (volumeResources == null)
                 volumeResources = new HashMap<String, Object>();
             volumeResources.put(IndelibleFSVolumeIF.kVolumeNamePropertyName, volumeName);
@@ -484,7 +485,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
         
         try
         {
-            HashMap<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
+            Map<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
             if (volumeResources != null)
                 volumeName = (String)volumeResources.get(IndelibleFSVolumeIF.kVolumeNamePropertyName);
         } catch (IOException e)
@@ -512,7 +513,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
         	}
             try
             {
-                HashMap<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
+                Map<String, Object>volumeResources = getMetaDataResource(IndelibleFSVolumeIF.kVolumeResourcesName);
                 if (volumeResources == null)
                     volumeResources = new HashMap<String, Object>();
                 for (String curUserPropertyName:kUserSettableProperties)
@@ -546,7 +547,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
 	 */
     @Override
     public IndelibleFSVolume setMetaDataResource(String mdResourceName,
-            HashMap<String, Object> resources)
+            Map<String, Object> resources)
             throws PermissionDeniedException, IOException
     {
         if (mdResourceName.equals(IndelibleFSVolumeIF.kVolumeResourcesName))
@@ -580,6 +581,11 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
 				dirtyList.put(dirtyNode.getObjectID(), dirtyNode);
 				if (dirtyList.size() == 1)
 					getConnection().addVolumeToFlush(this);
+			}
+			else
+			{
+				if (dirtyList.get(dirtyNode.getObjectID()) != dirtyNode)
+					throw new InternalError("Multiple dirty versions of "+dirtyNode.getObjectID());
 			}
 		}
 	}
@@ -649,7 +655,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
 	 */
     public void addSnapshot(IndelibleSnapshotInfo snapshotInfo) throws PermissionDeniedException, IOException
     {
-    	HashMap<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
+    	Map<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
     	boolean closeTransaction = false;
     	if (!connection.inTransaction())
     	{
@@ -684,7 +690,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
     @Override
 	public boolean releaseSnapshot(IndelibleVersion removeSnapshotVersion) throws PermissionDeniedException, IOException
     {
-    	HashMap<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
+    	Map<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
     	boolean closeTransaction = false;
     	if (!connection.inTransaction())
     	{
@@ -721,7 +727,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
     @Override
 	public IndelibleSnapshotInfo getInfoForSnapshot(IndelibleVersion retrieveSnapshotVersion) throws PermissionDeniedException, IOException
     {
-    	HashMap<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
+    	Map<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
     	IndelibleSnapshotInfo returnInfo = (IndelibleSnapshotInfo)snapshotMap.get(getSnapshotName(retrieveSnapshotVersion));
     	return returnInfo;
     }
@@ -732,7 +738,7 @@ public abstract class IndelibleFSVolume extends IndelibleFSObject
     @Override
 	public IndelibleSnapshotIterator listSnapshots() throws PermissionDeniedException, IOException
     {
-    	HashMap<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
+    	Map<String, Object>snapshotMap = getMetaDataResource(IndelibleFSVolumeIF.kVolumeSnapshotsPropertyName);
     	ArrayList<IndelibleSnapshotInfo>snapshotList = new ArrayList<IndelibleSnapshotInfo>();
 
     	if (snapshotMap != null)

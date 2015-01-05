@@ -20,6 +20,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.rmi.registry.LocateRegistry;
 import java.security.InvalidKeyException;
 import java.security.KeyStoreException;
@@ -30,7 +31,9 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.text.MessageFormat;
 
-import com.igeekinc.indelible.indeliblefs.IndelibleFSClient;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
+
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
@@ -88,8 +91,8 @@ public class BasicNetworkDataMoverTest extends iGeekTestCase
             GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
             GeneratorID testBaseID = genIDFactory.createGeneratorID();
             ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-            DataMoverSource.init(oidFactory);
             DataMoverReceiver.init(oidFactory);
+            DataMoverSource.init(oidFactory, new InetSocketAddress(0), new AFUNIXSocketAddress(new File("/tmp/bndt-socket")));
             
             moverSession = DataMoverSource.getDataMoverSource().createDataMoverSession(securityServer.getEntityID());
             String remoteHost = System.getProperty("com.igeekinc.indelible.indeliblefs.datamover.BasicNetworkDataMoverTest.remoteHost");

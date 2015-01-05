@@ -40,6 +40,7 @@ import com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.casstore.CASStore;
 import com.igeekinc.indelible.indeliblefs.uniblock.dbcas.statements.DBCASServerConnectionStatements;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.CASSegmentID;
@@ -105,9 +106,7 @@ public class DBCASServerConnection extends CASServerConnection
 	// For the moment, the cache is being kept on the connection for transaction integrity
 	// After we transition to true immutable objects, the cache can be moved in to the DBCASServer and shared
 	private LRUQueue<SegmentCollectionID, CASIdentifier>recentCache = new LRUQueue<SegmentCollectionID, CASIdentifier>(1024);
-    
-
-	protected DBCASServerConnection(DBCASServer server, Connection dbConnection, EntityID openingEntity)
+    protected DBCASServerConnection(DBCASServer server, Connection dbConnection, EntityID openingEntity)
     {
         super(server, openingEntity);
         statements = new DBCASServerConnectionStatements(dbConnection);
@@ -173,7 +172,7 @@ public class DBCASServerConnection extends CASServerConnection
 	}
 
 
-	void storeVersionedSegment(ObjectID id, CASIDDataDescriptor segmentDescriptor, int internalCollectionID) throws IOException
+	void storeVersionedSegment(ObjectID id, CASIDDataDescriptor segmentDescriptor, int internalCollectionID) throws IOException, SegmentExists
 	{
 		((DBCASServer)server).storeSegment(this, id, getVersionForTransaction(), segmentDescriptor, internalCollectionID);
 	}
@@ -247,12 +246,17 @@ public class DBCASServerConnection extends CASServerConnection
 		((DBCASServer)server).storeMetaData(this, metaDataDescriptor, internalCollectionID);
 	}
 
+	void removeMetaData(int internalCollectionID) throws IOException
+	{
+		((DBCASServer)server).removeMetaData(this, internalCollectionID);
+	}
+	
 	CASIDDataDescriptor retrieveMetaData(int internalCollectionID) throws IOException
 	{
 		return ((DBCASServer)server).retrieveMetaData(this, internalCollectionID);
 	}
 
-	boolean releaseSegment(CASSegmentID releaseID, int internalCollectionID) throws IOException
+	boolean releaseSegment(ObjectID releaseID, int internalCollectionID) throws IOException
 	{
 		// TODO - Fix this to figure out the version!
 		boolean released = ((DBCASServer)server).releaseSegment(this, releaseID, internalCollectionID);

@@ -197,6 +197,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
     public static final String kMapDBIndelibleFileName = "Index.mapdb";
     public static final String kJDBMIndelibleFileName = "Index.jdbm";	// For upgrade detection
     public static final String kStoreIDPropertyName = "com.igeekinc.indelible.indeliblefs.uniblock.casstore.dbfs.storeid";
+    public static final String kDBDirPropertyName = "com.igeekinc.indelible.indeliblefs.uniblock.casstore.dbfs.dbdir";
     public static final String kCASAIDToDataIDMapperBTreeRecName = "casIDToDataIDMapper";
     
     private LRUQueue<CASIdentifier, CASIDDataDescriptor>recentCache = new LRUQueue<CASIdentifier, CASIDDataDescriptor>(256);
@@ -204,13 +205,12 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 	
 	private long lastTimeSpaceChecked, writeStoreSpaceAvailable;
 	
-	public MapDBFSCASStore(File storeRoot)
+	public MapDBFSCASStore(File filesDir)
 	throws IOException
 	{
 		super(null);
-		this.storeRoot = storeRoot;
+		this.storeRoot = filesDir;
 		casStorageRoot = new File(storeRoot, kCASStoreDirectoryName);
-		mapDBIndexFile = new File(storeRoot, kMapDBIndelibleFileName);
 		initInternal(storeRoot);
 		/*
 		preenPauser = new PauseAbort(logger);
@@ -238,7 +238,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 	 * @param dbPassword
 	 * @throws IOException 
 	 */
-	public MapDBFSCASStore(CASStoreID storeID, File storeRoot) throws IOException
+	public MapDBFSCASStore(CASStoreID storeID, File dbDir, File storeRoot) throws IOException
 	{
 		super(null);
 		if (storeID == null)
@@ -246,10 +246,11 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		if (storeRoot == null)
 			throw new IllegalArgumentException("storeRoot cannot be null");
 		this.storeID = storeID;
+		this.dbDir = dbDir;
 		this.storeRoot = storeRoot;
 		propertiesFile = new File(storeRoot, kStorePropertiesFileName);
 		casStorageRoot = new File(storeRoot, kCASStoreDirectoryName);
-		mapDBIndexFile = new File(storeRoot, kMapDBIndelibleFileName);
+		mapDBIndexFile = new File(dbDir, kMapDBIndelibleFileName);
 		if (storeRoot.exists())
 		{
 			if (!storeRoot.isDirectory())
@@ -269,6 +270,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		
 		Properties writeProperties = new Properties();
 		writeProperties.setProperty(kStoreIDPropertyName, storeID.toString());
+		writeProperties.setProperty(kDBDirPropertyName, dbDir.toString());
 		FileOutputStream propertiesOutStream = new FileOutputStream(propertiesFile);
 		writeProperties.store(propertiesOutStream, storeRoot.getAbsolutePath()+" initialized at "+(new Date()).toString());
 		propertiesOutStream.close();
@@ -291,7 +293,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
         casDB.close();
 	}
 	
-	private void initInternal(File storeRoot) throws FileNotFoundException,
+	private boolean initInternal(File storeRoot) throws FileNotFoundException,
 			IOException
 	{
 
@@ -317,9 +319,14 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		if (storeIDStr == null)
 			throw new IllegalArgumentException(kStoreIDPropertyName+" not found in properties file "+propertiesFile.getAbsolutePath()+" - initialize the directory before using");
 		storeID = (CASStoreID)ObjectIDFactory.reconstituteFromString(storeIDStr);
-		
+		String dbDirString = storeProperties.getProperty(kDBDirPropertyName);
+		if (dbDirString != null)
+			dbDir = new File(dbDirString);
+		else
+			dbDir = storeRoot;
 		casStorage = new FSCASSerialStorage(casStorageRoot);
-		
+		mapDBIndexFile = new File(dbDir, kMapDBIndelibleFileName);
+
 		casDB = null;
         try
 		{
@@ -328,7 +335,6 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 			
 		} catch (Throwable t)
 		{
-			// TODO Auto-generated catch block
 			Logger.getLogger(getClass()).error(new ErrorLogMessage("Could not open "+mapDBIndexFile+" for read only"), t);
 		}
 
@@ -338,7 +344,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 			setStatus(CASStoreStatus.kNeedsRebuild);
 			if (casDB != null)
 				casDB.close();
-			return;
+			return false;
         }
         
         if (casDB != null)
@@ -378,7 +384,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 			{
 				logger.error("Can't find Last ID ("+lastFSID+") from filesystem in the database - store needs reloading");
 				setStatus(CASStoreStatus.kNeedsReloadOfNewObjects);
-				return;
+				return false;
 			}
 		}
 		nextDataID = lastFSID;
@@ -404,6 +410,7 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 			}
 		};
 		commitTimer.schedule(commitTimerTask, 30000, 30000);	// Commit everything every 
+		return true;
 	}
 
 	
@@ -797,19 +804,39 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		casDB.close();
 		System.out.println("Commit took "+ (System.currentTimeMillis() - startRebuildPostProcessTime));
 		File rebuildIndexFileDB = new File(rebuildIndex.getAbsolutePath());
-		File newJdbmIndexFileDB = new File(mapDBIndexFile.getAbsolutePath());
-		rebuildIndexFileDB.renameTo(newJdbmIndexFileDB);
+		File newMapDBIndexFile = new File(mapDBIndexFile.getAbsolutePath());
+		if (rebuildIndexFileDB.exists() && !rebuildIndexFileDB.renameTo(newMapDBIndexFile))
+			throw new IOException("Could not rename "+rebuildIndexFileDB+" to "+newMapDBIndexFile);
 		
 		File rebuildIndexFileLog = new File(rebuildIndex.getAbsolutePath()+".t");
-		File newJdbmIndexFileLog = new File(mapDBIndexFile.getAbsolutePath()+".t");
-		rebuildIndexFileLog.renameTo(newJdbmIndexFileLog);
+		File newMapDBIndexFileLog = new File(mapDBIndexFile.getAbsolutePath()+".t");
+		if (rebuildIndexFileLog.exists() && !rebuildIndexFileLog.renameTo(newMapDBIndexFileLog))
+			throw new IOException("Could not rename "+rebuildIndexFileLog+" to "+newMapDBIndexFileLog);
 		
 		File rebuildIndexPhysFile = new File(rebuildIndex.getAbsolutePath()+".p");
-		File newJdbmIndexPhysFile= new File(mapDBIndexFile.getAbsolutePath()+".p");
-		rebuildIndexPhysFile.renameTo(newJdbmIndexPhysFile);
+		File newMapDBIndexPhysFile= new File(mapDBIndexFile.getAbsolutePath()+".p");
+		if (rebuildIndexPhysFile.exists() && !rebuildIndexPhysFile.renameTo(newMapDBIndexPhysFile))
+			throw new IOException("Could not rename "+rebuildIndexPhysFile+"  to "+newMapDBIndexPhysFile);
 		
 		initInternal(storeRoot);
 		logger.error(new ErrorLogMessage("Finished rebuild on store {0}, path={1}", getCASStoreID(), casStorageRoot));
+		Iterator<CASIdentifier> checkIterator = casIDToDataIDMapper.keySet().iterator();
+		if (!checkIterator.hasNext())
+		{
+			if (getNumSegments() > 0)
+				throw new InternalError("casIDToDataIDMapper empty after rebuild but numSegments = "+getNumSegments());
+		}
+		else
+		{
+			CASIdentifier checkIdentifier = checkIterator.next();
+			try {
+				retrieveSegment(checkIdentifier);
+			} catch (SegmentNotFound e) {
+				throw new InternalError("Unable to retrieve first segment in index");
+
+			}
+		}
+		setStatus(CASStoreStatus.kReady);
 	}
 
 	protected File prepareForRebuild() throws IOException
@@ -818,11 +845,11 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		File mapDBIndexFileDB = new File(mapDBIndexFile.getAbsolutePath());
 		if (mapDBIndexFileDB.exists())
 		{
-			File saveMapDBIndexFile = new File(storeRoot, kMapDBIndelibleFileName+"-save-"+saveIndexNum);
+			File saveMapDBIndexFile = new File(dbDir, kMapDBIndelibleFileName+"-save-"+saveIndexNum);
 			while (saveMapDBIndexFile.exists())
 			{
 				saveIndexNum++;
-				saveMapDBIndexFile = new File(storeRoot, kMapDBIndelibleFileName+"-save-"+saveIndexNum);
+				saveMapDBIndexFile = new File(dbDir, kMapDBIndelibleFileName+"-save-"+saveIndexNum);
 			}
 			logger.error(new ErrorLogMessage("Renaming corrupted index file {0} to {1}", mapDBIndexFile, saveMapDBIndexFile));
 			mapDBIndexFileDB.renameTo(saveMapDBIndexFile);
@@ -830,11 +857,11 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		File mapDBLogFile = new File(mapDBIndexFile.getAbsolutePath()+".t");
 		if (mapDBLogFile.exists())
 		{
-			File saveMapDBLogFile = new File(storeRoot, kMapDBIndelibleFileName+".t-save-"+saveIndexNum);
+			File saveMapDBLogFile = new File(dbDir, kMapDBIndelibleFileName+".t-save-"+saveIndexNum);
 			while (saveMapDBLogFile.exists())
 			{
 				saveIndexNum++;
-				saveMapDBLogFile = new File(storeRoot, kMapDBIndelibleFileName+".t-save-"+saveIndexNum);
+				saveMapDBLogFile = new File(dbDir, kMapDBIndelibleFileName+".t-save-"+saveIndexNum);
 			}
 			logger.error(new ErrorLogMessage("Renaming corrupted index file {0} to {1}", mapDBIndexFile, saveMapDBLogFile));
 			mapDBLogFile.renameTo(saveMapDBLogFile);
@@ -842,16 +869,16 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		File mapDBPhysFile = new File(mapDBIndexFile.getAbsolutePath()+".p");
 		if (mapDBPhysFile.exists())
 		{
-			File saveMapDBPhysFile = new File(storeRoot, kMapDBIndelibleFileName+".p-save-"+saveIndexNum);
+			File saveMapDBPhysFile = new File(dbDir, kMapDBIndelibleFileName+".p-save-"+saveIndexNum);
 			while (saveMapDBPhysFile.exists())
 			{
 				saveIndexNum++;
-				saveMapDBPhysFile = new File(storeRoot, kMapDBIndelibleFileName+".p-save-"+saveIndexNum);
+				saveMapDBPhysFile = new File(dbDir, kMapDBIndelibleFileName+".p-save-"+saveIndexNum);
 			}
 			logger.error(new ErrorLogMessage("Renaming corrupted index file {0} to {1}", mapDBIndexFile, saveMapDBPhysFile));
 			mapDBPhysFile.renameTo(saveMapDBPhysFile);
 		}
-		File rebuildIndex = new File(storeRoot, kMapDBIndelibleFileName+"-rebuild");
+		File rebuildIndex = new File(dbDir, kMapDBIndelibleFileName+"-rebuild");
 		createMapDBIndex(rebuildIndex);
 		
         DBMaker newFileDB = DBMaker.newFileDB(rebuildIndex);
@@ -931,9 +958,16 @@ public class MapDBFSCASStore extends AbstractFSCASStore implements CASStore
 		}
 		casDB.commit();
 		casDB.close();
-		initInternal(storeRoot);
-		logger.error(new ErrorLogMessage("Finished reload on store {0}, path={1}", getCASStoreID(), casStorageRoot));
-		setStatus(CASStoreStatus.kReady);
+		if (initInternal(storeRoot))
+		{
+			logger.error(new ErrorLogMessage("Finished reload on store {0}, path={1}", getCASStoreID(), casStorageRoot));
+			setStatus(CASStoreStatus.kReady);
+		}
+		else
+		{
+			logger.error(new ErrorLogMessage("After reload, initInternal failed on store {0}, path={1}", getCASStoreID(), casStorageRoot));
+			setStatus(CASStoreStatus.kNeedsRebuild);
+		}
 	}
 
 	public synchronized boolean upgradeJDBMtoMapDB() throws FileNotFoundException, IOException

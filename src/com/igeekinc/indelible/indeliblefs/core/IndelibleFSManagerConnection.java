@@ -30,6 +30,7 @@ import com.igeekinc.indelible.indeliblefs.datamover.NetworkDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.exceptions.InTransactionException;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
 import com.igeekinc.indelible.indeliblefs.exceptions.VolumeNotFoundException;
+import com.igeekinc.indelible.indeliblefs.firehose.msgpack.IndelibleFSManagerConnectionIF;
 import com.igeekinc.indelible.indeliblefs.security.SessionAuthentication;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnection;
@@ -38,7 +39,7 @@ import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.IndelibleFSObjectID;
 import com.igeekinc.util.logging.ErrorLogMessage;
 
-public class IndelibleFSManagerConnection
+public class IndelibleFSManagerConnection implements IndelibleFSManagerConnectionIF
 {
     private IndelibleFSManager manager;
     private CASServerConnection casServerConnection;
@@ -69,6 +70,12 @@ public class IndelibleFSManagerConnection
     {
         return manager.createVolume(this, volumeProperties);
     }
+	
+	public void deleteVolume(IndelibleFSObjectID deleteVolumeID)
+		    throws VolumeNotFoundException, PermissionDeniedException, IOException
+	{
+		manager.deleteVolume(this, deleteVolumeID);
+	}
     
     /* (non-Javadoc)
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleServerConnectionIF#retrieveVolume(com.igeekinc.indelible.oid.IndelibleFSObjectID)
@@ -132,12 +139,12 @@ public class IndelibleFSManagerConnection
         inTransaction = false;
     }
 
-    protected synchronized Hashtable<IndelibleFSObjectID, CASCollectionID> getVolumesForTransaction()
+    protected Hashtable<IndelibleFSObjectID, CASCollectionID> getVolumesForTransaction()
     {
         return volumesForTransaction;
     }
 
-    protected synchronized void setVolumesForTransaction(Hashtable<IndelibleFSObjectID, CASCollectionID> volumesForTransaction)
+    protected void setVolumesForTransaction(Hashtable<IndelibleFSObjectID, CASCollectionID> volumesForTransaction)
     {
         this.volumesForTransaction = volumesForTransaction;
     }
@@ -218,7 +225,7 @@ public class IndelibleFSManagerConnection
 	/* (non-Javadoc)
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleServerConnectionIF#getDefaultVersion()
 	 */
-	public synchronized IndelibleVersion getDefaultVersion()
+	public IndelibleVersion getDefaultVersion()
 	{
 		return defaultVersion;
 	}

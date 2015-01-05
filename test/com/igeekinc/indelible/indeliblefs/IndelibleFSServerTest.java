@@ -16,12 +16,12 @@
  
 package com.igeekinc.indelible.indeliblefs;
 
-import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.net.InetSocketAddress;
 import java.rmi.RemoteException;
 import java.text.MessageFormat;
 import java.util.Arrays;
@@ -32,6 +32,7 @@ import java.util.Random;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
 import org.apache.log4j.PropertyConfigurator;
 import org.perf4j.StopWatch;
@@ -39,6 +40,7 @@ import org.perf4j.log4j.Log4JStopWatch;
 
 import com.igeekinc.indelible.indeliblefs.core.IndelibleSnapshotInfo;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
+import com.igeekinc.indelible.indeliblefs.core.IndelibleVersionIterator;
 import com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSession;
@@ -47,7 +49,7 @@ import com.igeekinc.indelible.indeliblefs.exceptions.FileExistsException;
 import com.igeekinc.indelible.indeliblefs.exceptions.ForkNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.ObjectNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.remote.IndelibleFSForkRemoteInputStream;
 import com.igeekinc.indelible.indeliblefs.remote.IndelibleFSForkRemoteOutputStream;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
@@ -185,7 +187,7 @@ public class IndelibleFSServerTest extends iGeekTestCase
 	private static final String	kDirOneName	= "dir one";
 	private static final String	kSnapshotTestProperty	= "testInfo";
 	private static final int kSmallDirTreeFileSize = 64*1024;
-	private static IndelibleFSServerProxy fsServer;
+	private static IndelibleFSServer fsServer;
     private static IndelibleFSVolumeIF testVolume;
     private static IndelibleDirectoryNodeIF root;
     private static IndelibleServerConnectionIF connection;
@@ -193,6 +195,10 @@ public class IndelibleFSServerTest extends iGeekTestCase
     private static boolean dataMoverInitialized = false;
     private Logger logger;
     
+	public Level getLoggingLevel()
+	{
+		return Level.WARN;
+	}
     
     public void setUp()
     throws Exception
@@ -201,7 +207,6 @@ public class IndelibleFSServerTest extends iGeekTestCase
     	{
     		IndelibleFSClientPreferences.initPreferences(null);
 
-    		//DataMoverSource.noServer = true;
     		MonitoredProperties serverProperties = IndelibleFSClientPreferences.getProperties();
     		PropertyConfigurator.configure(serverProperties);
     		logger = Logger.getLogger(getClass());
@@ -221,7 +226,7 @@ public class IndelibleFSServerTest extends iGeekTestCase
 
     		EntityAuthenticationClient.getEntityAuthenticationClient().trustServer(securityServer);
     		IndelibleFSClient.start(null, serverProperties);
-    		IndelibleFSServerProxy[] servers = new IndelibleFSServerProxy[0];
+    		IndelibleFSServer[] servers = new IndelibleFSServer[0];
 
     		while(servers.length == 0)
     		{
@@ -236,8 +241,8 @@ public class IndelibleFSServerTest extends iGeekTestCase
     			GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
     			GeneratorID testBaseID = genIDFactory.createGeneratorID();
     			ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-    			DataMoverSource.init(oidFactory);
     			DataMoverReceiver.init(oidFactory);
+    			DataMoverSource.init(oidFactory, new InetSocketAddress(0), null);
     			dataMoverInitialized = true;
     		}
     		connection = fsServer.open();
@@ -266,7 +271,18 @@ public class IndelibleFSServerTest extends iGeekTestCase
     	}
     }
 
-    public void testCreateSingleFile() throws Exception
+    
+    @Override
+	protected void tearDown() throws Exception
+	{
+    	if (testVolume != null)
+    	{
+    		connection.deleteVolume(testVolume.getVolumeID());
+    	}
+    	super.tearDown();
+	}
+
+	public void testCreateSingleFile() throws Exception
     {
     	connection.startTransaction();
     	try
@@ -932,7 +948,7 @@ public class IndelibleFSServerTest extends iGeekTestCase
     public void testBasicSnapshots()
     throws Exception
     {
-    	IndelibleVersion startVersion = testVolume.getRoot().getVersion();
+    	IndelibleVersion startVersion = testVolume.getRoot().getCurrentVersion();
     	HashMap<String, Serializable> metadata = new HashMap<String, Serializable>();
     	metadata.put(kSnapshotTestProperty, "1");
     	IndelibleSnapshotInfo startInfo = new IndelibleSnapshotInfo(startVersion, metadata);
@@ -972,7 +988,7 @@ public class IndelibleFSServerTest extends iGeekTestCase
 		
 		IndelibleFileNodeIF previousVersionTestFile = curTestFile.getVersion(singleCreatedVersion, RetrieveVersionFlags.kExact);
 		assertNotNull(previousVersionTestFile);
-		assertEquals(singleCreatedVersion, previousVersionTestFile.getVersion());
+		assertEquals(singleCreatedVersion, previousVersionTestFile.getCurrentVersion());
 		
 		IndelibleFSForkIF testDataFork2 = previousVersionTestFile.getFork("data", true);
 		assertEquals(1024, testDataFork2.length());
@@ -1087,5 +1103,45 @@ public class IndelibleFSServerTest extends iGeekTestCase
         long retrieveEndTime = System.currentTimeMillis();
         long elapsedTime = retrieveEndTime - retrieveStartTime;
         System.out.println("Retrieve path 1000 time in "+elapsedTime+" ms");
+    }
+    
+    public void testFileVersions()
+    throws Exception
+    {
+        String name = "versionsTestFile";
+        CreateFileInfo testInfo = root.createChildFile(name, true);
+        IndelibleFileNodeIF curTestFile = testInfo.getCreatedNode();
+        for (int cycle = 0; cycle < 10; cycle++)
+        {
+        	connection.startTransaction();
+            IndelibleFSForkIF testDataFork = curTestFile.getFork("data", true);
+            byte [] testData = new byte[1024];
+            byte testByte = Integer.toString(cycle).getBytes("UTF-8")[0];
+            for (int curByteNum = 0; curByteNum < testData.length; curByteNum++)
+            {
+            	testData[curByteNum] = testByte;
+            }
+            testDataFork.append(testData);
+            connection.commit();
+        }
+        IndelibleVersionIterator iterator = curTestFile.listVersions();
+        int numVersions = 0;
+        IndelibleVersion lastVersion = null;
+        while (iterator.hasNext())
+        {
+        	numVersions++;
+        	IndelibleVersion curVersion = iterator.next();
+        	if (lastVersion != null)
+        	{
+        		if (curVersion.getVersionTime() < lastVersion.getVersionTime())
+        			fail ("Versions not in order");
+        		if (curVersion.getVersionTime() == lastVersion.getVersionTime())
+        		{
+        			if (curVersion.getUniquifier() <= lastVersion.getUniquifier())
+        				fail ("Uniquifier not incrementing or out of order");
+        		}
+        	}
+        }
+        assertEquals(10, numVersions);
     }
 }

@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.concurrent.Future;
 
+import org.apache.log4j.Logger;
 import org.perf4j.LoggingStopWatch;
 import org.perf4j.log4j.Log4JStopWatch;
 
@@ -31,10 +32,12 @@ import com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDMemoryDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIdentifier;
 import com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.CASSegmentID;
 import com.igeekinc.util.DirectMemoryUtils;
 import com.igeekinc.util.async.AsyncCompletion;
 import com.igeekinc.util.async.ComboFutureBase;
+import com.igeekinc.util.logging.DebugLogMessage;
 import com.igeekinc.util.objectcache.LRUQueue;
 import com.igeekinc.util.perf.MBPerSecondLog4jStopWatch;
 
@@ -138,14 +141,6 @@ public class IndelibleFSCASFork extends IndelibleFSFork
 		return null;
 	}
 
-	@Override
-	public <A> void getDataDescriptorAsync(long offset, long length,
-			AsyncCompletion<Void, A> completionHandler, A attachment)
-			throws IOException
-	{
-		// TODO Auto-generated method stub
-		
-	}
     /* (non-Javadoc)
      * @see com.igeekinc.indelible.indeliblefs.IndelibleFSStream#read(long, byte[])
      */
@@ -242,6 +237,8 @@ public class IndelibleFSCASFork extends IndelibleFSFork
     	{
     		long startLength = length;
     		long bytesToWrite = writeLength;
+    		if (offset > length)
+    			extend(offset);		// Zero-fill as necessary
     		loadBuffer(offset);
     		while (bytesToWrite > 0)
     		{
@@ -456,10 +453,12 @@ public class IndelibleFSCASFork extends IndelibleFSFork
     	{
     		if (source.getLength() == kPreferredBlockSize && length % kPreferredBlockSize == 0)
     		{
+    			Logger.getLogger(getClass()).debug(new DebugLogMessage("appendBlock length = "+length+" casID = "+source.getCASIdentifier()));
     			appendBlock(source, length, true, false);
     		}
     		else
     		{
+    			Logger.getLogger(getClass()).debug(new DebugLogMessage("writeDataDescriptor length = "+length+" casID = "+source.getCASIdentifier()));
     			writeDataDescriptor(length, source);
     		}
     		wholeWatch.bytesProcessed(source.getLength());
@@ -552,8 +551,16 @@ public class IndelibleFSCASFork extends IndelibleFSFork
     		}
     		else
     		{
-    			DataVersionInfo segmentInfo = casCollection.retrieveSegment(segmentID);
-    			CASIDDataDescriptor loadDescriptor = segmentInfo.getDataDescriptor();	// We can ignore the version here
+    			CASIDDataDescriptor loadDescriptor = null;
+    			try
+    			{
+    				DataVersionInfo segmentInfo = casCollection.retrieveSegment(segmentID);
+    				loadDescriptor = segmentInfo.getDataDescriptor();	// We can ignore the version here
+    			}
+    			catch(SegmentNotFound e)
+    			{
+    				
+    			}
     			if (loadDescriptor == null)
     				throw new IOException("Failed to retrieve segment "+segmentID.toString());
     			ByteBuffer readBuffer = getBufferNoLoad();
@@ -633,7 +640,7 @@ public class IndelibleFSCASFork extends IndelibleFSFork
     			}
     			else
     			{
-    				throw new InternalError("Can't handle sparse files yet");
+    				throw new InternalError("Fork did not extend properly");
     			}
     		}
 
@@ -859,6 +866,39 @@ public class IndelibleFSCASFork extends IndelibleFSFork
 			dirtyBuffer = getBuffer();
 		else
 			dirtyBuffer = null;
+	}
+
+	@Override
+	public <A> void getDataDescriptorAsync(long offset, long length,
+			AsyncCompletion<CASIDDataDescriptor, A> completionHandler,
+			A attachment) throws IOException
+	{
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public Future<Void> appendDataDescriptorAsync(CASIDDataDescriptor source)
+			throws IOException
+	{
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	@Override
+	public <A> void appendDataDescriptorAsync(CASIDDataDescriptor source,
+			AsyncCompletion<Void, A> completionHandler, A attachment)
+			throws IOException
+	{
+		// TODO Auto-generated method stub
+		
+	}
+
+	@Override
+	public void append(ByteBuffer source) throws IOException
+	{
+		// TODO Auto-generated method stub
+		
 	}
 
 

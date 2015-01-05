@@ -20,7 +20,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import com.igeekinc.indelible.oid.CASSegmentID;
+import com.igeekinc.indelible.oid.ObjectID;
 
 /**
  * Used for segments identified by a CASSegmentID (assigned by CASServer layer, non-versioned)
@@ -33,7 +33,7 @@ public class RetrieveSegmentByOIDStatement extends StatementWrapper
 		super(dbConnection, "select * from cas,data where cas.cassegmentid=? and cas.collectionid=? and data.id=cas.dataid");
 	}
 	
-	public ResultSet retrieveSegmentByOID(CASSegmentID segmentID, int internalCollectionID) throws SQLException
+	public ResultSet retrieveSegmentByOID(ObjectID segmentID, int internalCollectionID) throws SQLException
 	{
 		getStatement().setBytes(1, segmentID.getBytes());
 		getStatement().setInt(2, internalCollectionID);

@@ -24,7 +24,7 @@ public class RetrieveMetaDataStatement extends StatementWrapper
 {
 	public RetrieveMetaDataStatement(Connection dbConnection) throws SQLException
 	{
-		super(dbConnection, "select * from collections, data where internalid=? and data.id=collections.metadataid");
+		super(dbConnection, "select collections.id as collections_id, collections.internalid, collections.metadataid, data.id as data_id, data.casid, data.usage, data.storenum from collections, data where internalid=? and data.id=collections.metadataid");
 	}
 	
 	public ResultSet retrieveMetaData(int internalCollectionID) throws SQLException

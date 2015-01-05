@@ -58,6 +58,7 @@ public class DBCASServerConnectionStatements
     private AddLocalServerEventStatement addLocalServerEvent;
     private AddReplicatedServerEventStatement addReplicatedServerEvent;
     private InsertNewCollectionStatement insertNewCollection;
+    private DeleteCollectionStatement deleteCollection;
     private GetCurrentInternalIDStatement getCurrentInternalID;
     private ListCollectionsStatement listCollections;
     private GetCollectionInternalIDStatement getCollectionInternalID;
@@ -109,6 +110,7 @@ public class DBCASServerConnectionStatements
 			addLocalServerEvent = new AddLocalServerEventStatement(dbConnection);
 			addReplicatedServerEvent = new AddReplicatedServerEventStatement(dbConnection);
 			insertNewCollection = new InsertNewCollectionStatement(dbConnection);
+			deleteCollection = new DeleteCollectionStatement(dbConnection);
 			getCurrentInternalID = new GetCurrentInternalIDStatement(dbConnection);
 			listCollections = new ListCollectionsStatement(dbConnection);
 			getCollectionInternalID = new GetCollectionInternalIDStatement(dbConnection);
@@ -277,6 +279,11 @@ public class DBCASServerConnectionStatements
 		return insertNewCollection;
 	}
 
+	public DeleteCollectionStatement getDeleteCollection()
+	{
+		return deleteCollection;
+	}
+	
 	public GetCurrentInternalIDStatement getGetCurrentInternalID()
 	{
 		return getCurrentInternalID;

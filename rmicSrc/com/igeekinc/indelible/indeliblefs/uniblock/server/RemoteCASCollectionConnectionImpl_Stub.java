@@ -20,12 +20,12 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	new java.rmi.server.Operation("long getLastEventID()"),
 	new java.rmi.server.Operation("long getLastReplicatedEventID(com.igeekinc.indelible.oid.EntityID, com.igeekinc.indelible.oid.CASCollectionID)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor getMetaDataForReplication()"),
-	new java.rmi.server.Operation("java.util.HashMap getMetaDataResource(java.lang.String)"),
+	new java.rmi.server.Operation("java.util.Map getMetaDataResource(java.lang.String)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.oid.EntityID getMoverID()"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.events.RemoteIndelibleEventIterator getTransactionEventsAfterEventID(long, int)"),
 	new java.rmi.server.Operation("java.lang.String listMetaDataNames()[]"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.server.RemoteCASSegmentIDIterator listSegmentIDs()"),
-	new java.rmi.server.Operation("boolean releaseSegment(com.igeekinc.indelible.oid.CASSegmentID)"),
+	new java.rmi.server.Operation("boolean releaseSegment(com.igeekinc.indelible.oid.ObjectID)"),
 	new java.rmi.server.Operation("void repairSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo)"),
 	new java.rmi.server.Operation("void replicateMetaDataResource(com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor, com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEvent)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.CASIdentifier retrieveCASIdentifier(com.igeekinc.indelible.oid.CASSegmentID)"),
@@ -34,7 +34,7 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo retrieveSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo retrieveSegmentInfo(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("void rollback()"),
-	new java.rmi.server.Operation("void setMetaDataResource(java.lang.String, java.util.HashMap)"),
+	new java.rmi.server.Operation("void setMetaDataResource(java.lang.String, java.util.Map)"),
 	new java.rmi.server.Operation("void startReplicatedTransaction(com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent)"),
 	new java.rmi.server.Operation("void startTransaction()"),
 	new java.rmi.server.Operation("void storeReplicatedSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.datamover.NetworkDataDescriptor, com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEvent)"),
@@ -43,7 +43,7 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	new java.rmi.server.Operation("boolean verifySegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)")
     };
     
-    private static final long interfaceHash = -8690896036000837086L;
+    private static final long interfaceHash = -1555822600103836272L;
     
     // constructors
     public RemoteCASCollectionConnectionImpl_Stub() {
@@ -426,7 +426,7 @@ public final class RemoteCASCollectionConnectionImpl_Stub
     }
     
     // implementation of getMetaDataResource(String)
-    public java.util.HashMap getMetaDataResource(java.lang.String $param_String_1)
+    public java.util.Map getMetaDataResource(java.lang.String $param_String_1)
 	throws com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException, java.io.IOException, java.rmi.RemoteException
     {
 	try {
@@ -438,10 +438,10 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 		throw new java.rmi.MarshalException("error marshalling arguments", e);
 	    }
 	    ref.invoke(call);
-	    java.util.HashMap $result;
+	    java.util.Map $result;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
-		$result = (java.util.HashMap) in.readObject();
+		$result = (java.util.Map) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling return", e);
 	    } catch (java.lang.ClassNotFoundException e) {
@@ -582,15 +582,15 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	}
     }
     
-    // implementation of releaseSegment(CASSegmentID)
-    public boolean releaseSegment(com.igeekinc.indelible.oid.CASSegmentID $param_CASSegmentID_1)
+    // implementation of releaseSegment(ObjectID)
+    public boolean releaseSegment(com.igeekinc.indelible.oid.ObjectID $param_ObjectID_1)
 	throws java.io.IOException, java.rmi.RemoteException
     {
 	try {
 	    java.rmi.server.RemoteCall call = ref.newCall((java.rmi.server.RemoteObject) this, operations, 17, interfaceHash);
 	    try {
 		java.io.ObjectOutput out = call.getOutputStream();
-		out.writeObject($param_CASSegmentID_1);
+		out.writeObject($param_ObjectID_1);
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.MarshalException("error marshalling arguments", e);
 	    }
@@ -856,8 +856,8 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	}
     }
     
-    // implementation of setMetaDataResource(String, HashMap)
-    public void setMetaDataResource(java.lang.String $param_String_1, java.util.HashMap $param_HashMap_2)
+    // implementation of setMetaDataResource(String, Map)
+    public void setMetaDataResource(java.lang.String $param_String_1, java.util.Map $param_Map_2)
 	throws com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException, java.io.IOException, java.rmi.RemoteException
     {
 	try {
@@ -865,7 +865,7 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	    try {
 		java.io.ObjectOutput out = call.getOutputStream();
 		out.writeObject($param_String_1);
-		out.writeObject($param_HashMap_2);
+		out.writeObject($param_Map_2);
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.MarshalException("error marshalling arguments", e);
 	    }
@@ -984,7 +984,7 @@ public final class RemoteCASCollectionConnectionImpl_Stub
     
     // implementation of storeVersionedSegment(ObjectID, NetworkDataDescriptor)
     public void storeVersionedSegment(com.igeekinc.indelible.oid.ObjectID $param_ObjectID_1, com.igeekinc.indelible.indeliblefs.datamover.NetworkDataDescriptor $param_NetworkDataDescriptor_2)
-	throws java.io.IOException, java.rmi.RemoteException
+	throws com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists, java.io.IOException, java.rmi.RemoteException
     {
 	try {
 	    java.rmi.server.RemoteCall call = ref.newCall((java.rmi.server.RemoteObject) this, operations, 31, interfaceHash);
@@ -998,6 +998,8 @@ public final class RemoteCASCollectionConnectionImpl_Stub
 	    ref.invoke(call);
 	    ref.done(call);
 	} catch (java.lang.RuntimeException e) {
+	    throw e;
+	} catch (com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists e) {
 	    throw e;
 	} catch (java.io.IOException e) {
 	    throw e;

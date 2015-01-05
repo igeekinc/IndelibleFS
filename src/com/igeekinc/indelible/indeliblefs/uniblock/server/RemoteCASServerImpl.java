@@ -57,7 +57,7 @@ public class RemoteCASServerImpl extends SSLUnicastObject implements RemoteCASSe
 	@Override
 	public EntityID getServerID() throws RemoteException
 	{
-		return localServer.getServerID();
+		return null; //localServer.getServerID();
 	}
 
 	@Override

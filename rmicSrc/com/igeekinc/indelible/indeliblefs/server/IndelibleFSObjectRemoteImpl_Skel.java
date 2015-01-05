@@ -7,17 +7,17 @@ public final class IndelibleFSObjectRemoteImpl_Skel
     implements java.rmi.server.Skeleton
 {
     private static final java.rmi.server.Operation[] operations = {
-	new java.rmi.server.Operation("java.util.HashMap getMetaDataResource(java.lang.String)"),
+	new java.rmi.server.Operation("java.util.Map getMetaDataResource(java.lang.String)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote getObjectForVersion(com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.oid.IndelibleFSObjectID getObjectID()"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.core.IndelibleVersion getVersion()"),
 	new java.rmi.server.Operation("java.lang.String listMetaDataResources()[]"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.core.IndelibleVersionIterator listVersions()"),
 	new java.rmi.server.Operation("void release()"),
-	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String, java.util.HashMap)")
+	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String, java.util.Map)")
     };
     
-    private static final long interfaceHash = -2698424356887516211L;
+    private static final long interfaceHash = 5335300434315628062L;
     
     public java.rmi.server.Operation[] getOperations() {
 	return (java.rmi.server.Operation[]) operations.clone();
@@ -44,7 +44,7 @@ public final class IndelibleFSObjectRemoteImpl_Skel
 	    } finally {
 		call.releaseInputStream();
 	    }
-	    java.util.HashMap $result = server.getMetaDataResource($param_String_1);
+	    java.util.Map $result = server.getMetaDataResource($param_String_1);
 	    try {
 		java.io.ObjectOutput out = call.getResultStream(true);
 		out.writeObject($result);
@@ -143,14 +143,14 @@ public final class IndelibleFSObjectRemoteImpl_Skel
 	    break;
 	}
 	    
-	case 7: // setMetaDataResource(String, HashMap)
+	case 7: // setMetaDataResource(String, Map)
 	{
 	    java.lang.String $param_String_1;
-	    java.util.HashMap $param_HashMap_2;
+	    java.util.Map $param_Map_2;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
 		$param_String_1 = (java.lang.String) in.readObject();
-		$param_HashMap_2 = (java.util.HashMap) in.readObject();
+		$param_Map_2 = (java.util.Map) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling arguments", e);
 	    } catch (java.lang.ClassNotFoundException e) {
@@ -158,7 +158,7 @@ public final class IndelibleFSObjectRemoteImpl_Skel
 	    } finally {
 		call.releaseInputStream();
 	    }
-	    com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote $result = server.setMetaDataResource($param_String_1, $param_HashMap_2);
+	    com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote $result = server.setMetaDataResource($param_String_1, $param_Map_2);
 	    try {
 		java.io.ObjectOutput out = call.getResultStream(true);
 		out.writeObject($result);

@@ -37,13 +37,16 @@ import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersionIterator;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersionListIterator;
 import com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags;
+import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
+import com.igeekinc.indelible.indeliblefs.uniblock.CASCollection;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionConnection;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEventType;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIDMemoryDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASIdentifier;
+import com.igeekinc.indelible.indeliblefs.uniblock.CASSegmentIDIterator;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnection;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerEventType;
@@ -69,6 +72,7 @@ import com.igeekinc.indelible.indeliblefs.uniblock.dbcas.statements.GetLocalEven
 import com.igeekinc.indelible.indeliblefs.uniblock.dbcas.statements.GetLocalServerEventsAfterStatement;
 import com.igeekinc.indelible.indeliblefs.uniblock.dbcas.statements.GetVersionInfoForVersionIDStatement;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.CollectionNotFoundException;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.CASSegmentID;
@@ -78,11 +82,13 @@ import com.igeekinc.indelible.oid.GeneratorID;
 import com.igeekinc.indelible.oid.GeneratorIDFactory;
 import com.igeekinc.indelible.oid.ObjectID;
 import com.igeekinc.indelible.oid.ObjectIDFactory;
+import com.igeekinc.indelible.server.IndelibleServerPreferences;
 import com.igeekinc.util.BitTwiddle;
 import com.igeekinc.util.SHA1HashID;
 import com.igeekinc.util.async.AsyncCompletion;
 import com.igeekinc.util.async.ComboFutureBase;
 import com.igeekinc.util.datadescriptor.DataDescriptor;
+import com.igeekinc.util.logging.DebugLogMessage;
 import com.igeekinc.util.logging.ErrorLogMessage;
 import com.igeekinc.util.objectcache.LRUQueue;
 import com.igeekinc.util.perf.MBPerSecondLog4jStopWatch;
@@ -119,6 +125,7 @@ class StoreAsyncCompletionHandler<A> implements AsyncCompletion<Void, CASStoreIn
  */
 public class DBCASServer extends IndelibleEntity implements CASServerInternal <DBCASServerConnection>
 {
+	public static final String kVerifyDuplicateSegmentsPropertyName = "com.igeekinc.indelible.indeliblefs.uniblock.dbcas.DBCASServer.verifyDuplicateSegments";
 	private static final String	kStopWatchName	= DBCASServer.class.getName();
 	// This is here because CASCollectionConnection is an interface and cannot have an initializer
 	static
@@ -142,6 +149,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
 	private FindOrStoreAndUpdateCASStoreFunction	findOrStoreAndUpdateCASStoreFunction;
 	private boolean useGeneratedKeys = false;
 	private LRUQueue<CASIdentifier, Integer> segmentToStoreMapCache = new LRUQueue<CASIdentifier, Integer>(1024*1024);
+	private boolean verifyDuplicatedStoredSegments = false;
     /**
      * 
      */
@@ -242,6 +250,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
     	}
     	initStoredFunctions(dbConnection);
     	dbConnection.setAutoCommit(true);
+    	verifyDuplicatedStoredSegments = IndelibleServerPreferences.getProperties().getProperty(kVerifyDuplicateSegmentsPropertyName, "N").equals("Y");
     }
 
     private void initDB(Connection dbConnection) throws SQLException
@@ -288,6 +297,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
         initStmt.execute("create table connectedservers (servernum serial, serverid "+binaryType+", genid "+binaryType+", securityserverid "+binaryType+")");
         initStmt.execute("create table localevents (eventid bigint, collectionid int4, cassegmentid "+binaryType+", eventtype char(1), timestamp bigint, transactionid bigint, versionid bigint)");
         initStmt.execute("create index leindex on localevents(eventtype, collectionid, eventid)");
+        initStmt.execute("create index maxindex on localevents(collectionid, eventid)");	// TODO - this speeds up startup but there's probably a better way to cache the last event ID
         initStmt.execute("create table replicatedevents (servernum int, eventid bigint, collectionid int4, cassegmentid "+binaryType+", eventtype char(1), timestamp bigint, transactionid bigint, versionid bigint)");
         initStmt.execute("create table localserverevents (eventid bigint, collectionid "+binaryType+", eventtype char(1), timestamp bigint, transactionid bigint)");
         initStmt.execute("create table replicatedserverevents (servernum int, eventid bigint, collectionid "+binaryType+", eventtype char(1), timestamp bigint, transactionid bigint)");
@@ -343,19 +353,28 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
     /* (non-Javadoc)
      * @see com.igeekinc.indelible.indeliblefs.uniblock.CASServer#getCollection(com.igeekinc.indelible.oid.CASCollectionID)
      */
-    public CASCollectionConnection getCollection(DBCASServerConnection connection, CASCollectionID id)
+    public CASCollectionConnection openCollection(DBCASServerConnection connection, CASCollectionID id)
     throws CollectionNotFoundException
     {
-        String idStr = id.toString();
-        DBCASCollection returnCollection;
         DBCASServerConnection dbCASSserverConnection = (DBCASServerConnection)connection;
+        
+        DBCASCollection returnCollection = getCollection(dbCASSserverConnection, id);
+        DBCASCollectionConnection returnConnection = new DBCASCollectionConnection(returnCollection, dbCASSserverConnection);
+        return returnConnection;
+    }
+
+	private DBCASCollection getCollection(DBCASServerConnection connection, CASCollectionID id)
+			throws CollectionNotFoundException
+	{
+		String idStr = id.toString();
+        DBCASCollection returnCollection;
         synchronized(collections)
         {
         	returnCollection = collections.get(id);
         	if (returnCollection == null)
         	{
         		try {
-        			ResultSet findResults = dbCASSserverConnection.getStatements().getFindCollection().findCollection(id);
+        			ResultSet findResults = connection.getStatements().getFindCollection().findCollection(id);
         			if (findResults.next())
         			{
         				int internalID = findResults.getInt("internalid");
@@ -382,9 +401,8 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
         		}
         	}
         }
-        DBCASCollectionConnection returnConnection = new DBCASCollectionConnection(returnCollection, dbCASSserverConnection);
-        return returnConnection;
-    }
+		return returnCollection;
+	}
     
 
     /* (non-Javadoc)
@@ -420,11 +438,59 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
         }
         catch (SQLException e)
         {
-            e.printStackTrace();
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
             throw new InternalError("Failed to create collection");
         }
     }
 
+
+	
+	@Override
+	public void deleteCollection(DBCASServerConnection connection, CASCollectionID id) throws CollectionNotFoundException, IOException
+	{
+		DBCASCollection deleteCollection = getCollection(connection, id);
+		CASCollectionConnection deleteConnection = openCollection(connection, id);
+		CASSegmentIDIterator deleteIDIterator = deleteConnection.listSegments();
+		while (deleteIDIterator.hasNext())
+		{
+			ObjectID deleteID = deleteIDIterator.next();
+			deleteConnection.releaseSegment(deleteID);
+		}
+		// Now, delete the meta data
+        try
+        {
+            int internalCollectionID = deleteCollection.getInternalCollectionID();
+			ResultSet mdSet = connection.getStatements().getRetrieveMetaData().retrieveMetaData(internalCollectionID);
+            if (mdSet.next())
+            {
+                
+				try
+				{
+					CASIdentifier casID = getCASIDFromResultSet(mdSet, "casid");
+	                int storeNum = mdSet.getInt("storenum");
+	                long dataID = mdSet.getLong("data_id");
+	                
+	                deleteFromCAS(connection, storeNum, casID, dataID);
+				}
+				finally
+				{
+					mdSet.close();
+				}
+            }
+        } catch (SQLException e)
+        {
+        	logger.error(new ErrorLogMessage("Caught SQLException retrieving metadata"), e);
+            throw new IOException("Caught SQLException retrieving metadata");
+        }
+		try
+		{
+			connection.getStatements().getDeleteCollection().deleteCollection(id);
+		} catch (SQLException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+            throw new InternalError("Failed to create collection");
+		}
+	}
 
 	/* (non-Javadoc)
      * @see com.igeekinc.indelible.indeliblefs.uniblock.CASServer#getServerID()
@@ -530,7 +596,13 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
         }
     }
 
-    public IndelibleFSTransaction commit(DBCASServerConnection connection) throws IOException
+    @Override
+	public DBCASServerConnection open() throws PermissionDeniedException, IOException
+	{
+		throw new PermissionDeniedException();	// This is only for remote access where we already know who the opening entity is
+	}
+
+	public IndelibleFSTransaction commit(DBCASServerConnection connection) throws IOException
     {
     	boolean commitSucceeded = false;
         try
@@ -1128,7 +1200,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
 			}
 		}
 	}
-    public void storeSegment(DBCASServerConnection connection, ObjectID segmentID, IndelibleVersion version, CASIDDataDescriptor segmentDescriptor, int internalCollectionID) throws IOException
+    public void storeSegment(DBCASServerConnection connection, ObjectID segmentID, IndelibleVersion version, CASIDDataDescriptor segmentDescriptor, int internalCollectionID) throws IOException, SegmentExists
     {
     	synchronized(connection)
     	{
@@ -1140,7 +1212,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
     			{
     				if (version.isFinal())
     				{
-    					throw new IOException(segmentID+" already exists in collection");
+    					throw new SegmentExists(segmentID);
     				}
     				else
     				{
@@ -1247,65 +1319,69 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
 		{
 			long dataID = -1;
 			// First, check to see if this exists in the database
-			Log4JStopWatch checkForExistenceWatch = new Log4JStopWatch(kStopWatchName+".storeSegment.checkForExistence");
-			ResultSet checkResults = connection.getStatements().getCheckForExistence().checkForExistence(segmentDescriptor);
-			checkForExistenceWatch.stop();
-			
-			
-			if (checkResults.next())
+			synchronized(connection)
 			{
-				int storeNum = checkResults.getInt("storenum");
-				CASStore checkStore = connection.getStoreAtIndex(storeNum);
-				if (checkStore == null)
-				{
-					// OK, something is really broken
-					// TODO - take the CASStore offline and trigger a rebuild
-					throw new InternalError("Cannot find storenum "+storeNum);
-				}
+				Log4JStopWatch checkForExistenceWatch = new Log4JStopWatch(kStopWatchName+".storeSegment.checkForExistence");
+				ResultSet checkResults = connection.getStatements().getCheckForExistence().checkForExistence(segmentDescriptor);
+				checkForExistenceWatch.stop();
 
-				if (!checkStore.verifySegment(segmentDescriptor.getCASIdentifier()))
+
+				if (checkResults.next())
 				{
-					logger.error("Verify failed for segment "+segmentDescriptor.getCASIdentifier()+" - reinserting");
-					checkStore.storeSegment(segmentDescriptor);
-				}
-				dataID = checkResults.getInt("dataid");
-				do
-				{
-					if (checkResults.getInt("collectionid") == internalCollectionID)
+					int storeNum = checkResults.getInt("storenum");
+					CASStore checkStore = connection.getStoreAtIndex(storeNum);
+					if (checkStore == null)
 					{
-						// If it's already entered as a CASSegmentID we can share the ID
+						// OK, something is really broken
+						// TODO - take the CASStore offline and trigger a rebuild
+						throw new InternalError("Cannot find storenum "+storeNum);
+					}
 
-						ObjectID checkID = getObjectIDFromResultSet(checkResults, "cassegmentid");
-						if (checkID instanceof CASSegmentID)
+					if (verifyDuplicatedStoredSegments)
+					{
+						if (!checkStore.verifySegment(segmentDescriptor.getCASIdentifier()))
 						{
-							CASSegmentID returnID = (CASSegmentID)checkID;
-							// update data set usage=? where id=?
-
-							int usage = checkResults.getInt("usage");
-
-							connection.getStatements().getUpdateDataUsage().updateDataUsage(dataID, usage);
-							checkResults.close();
-							segmentDescriptor.close();
-							return new CASStoreInfo(CASStoreOperationStatus.kSegmentExists, returnID);    // It's already entered for us
+							logger.error("Verify failed for segment "+segmentDescriptor.getCASIdentifier()+" - reinserting");
+							checkStore.storeSegment(segmentDescriptor);
 						}
 					}
-				}
-				while(checkResults.next());
-				checkResults.close();
-				CASSegmentID returnID = (CASSegmentID) oidFactory.getNewOID(CASIDDataDescriptor.class);
+					dataID = checkResults.getInt("dataid");
+					do
+					{
+						if (checkResults.getInt("collectionid") == internalCollectionID)
+						{
+							// If it's already entered as a CASSegmentID we can share the ID
 
-				// Update the CAS table
-				insertIntoCASTable(connection, version.getVersionID(), dataID, returnID, internalCollectionID);
-				return new CASStoreInfo(CASStoreOperationStatus.kSegmentCreated, returnID);
-			}
-			else
-			{
+							ObjectID checkID = getObjectIDFromResultSet(checkResults, "cassegmentid");
+							if (checkID instanceof CASSegmentID)
+							{
+								CASSegmentID returnID = (CASSegmentID)checkID;
+								// update data set usage=? where id=?
+
+								int usage = checkResults.getInt("usage");
+								logger.debug(new DebugLogMessage("Updating data usage for "+dataID+" usage = "+usage));
+								connection.getStatements().getUpdateDataUsage().updateDataUsage(dataID, usage);
+								checkResults.close();
+								segmentDescriptor.close();
+								return new CASStoreInfo(CASStoreOperationStatus.kSegmentExists, returnID);    // It's already entered for us
+							}
+						}
+					}
+					while(checkResults.next());
+					checkResults.close();
+					CASSegmentID returnID = (CASSegmentID) oidFactory.getNewOID(CASIDDataDescriptor.class);
+
+					// Update the CAS table
+					insertIntoCASTable(connection, version.getVersionID(), dataID, returnID, internalCollectionID);
+					return new CASStoreInfo(CASStoreOperationStatus.kSegmentCreated, returnID);
+				}
 				checkResults.close();
-				CASSegmentID returnID = (CASSegmentID) oidFactory.getNewOID(CASIDDataDescriptor.class);
-				//dataID = storeDataSegment(connection, segmentDescriptor, casIDStr);      
-				findOrStoreAndUpdateCAS(connection, segmentDescriptor, version.getVersionID(), returnID, internalCollectionID);
-				return new CASStoreInfo(CASStoreOperationStatus.kSegmentCreated, returnID);
 			}
+			CASSegmentID returnID = (CASSegmentID) oidFactory.getNewOID(CASIDDataDescriptor.class);
+			//dataID = storeDataSegment(connection, segmentDescriptor, casIDStr);      
+			findOrStoreAndUpdateCAS(connection, segmentDescriptor, version.getVersionID(), returnID, internalCollectionID);
+			return new CASStoreInfo(CASStoreOperationStatus.kSegmentCreated, returnID);
+
 		} catch (SQLException e)
 		{
 			Logger.getLogger(getClass()).error(new ErrorLogMessage("Got SQL Exception inserting segment {0}", segmentDescriptor.getCASIdentifier()), e);
@@ -1344,10 +1420,13 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
     					throw new InternalError("Cannot find storenum "+storeNum);
     				}
 
-    				if (!checkStore.verifySegment(segmentDescriptor.getCASIdentifier()))
+    				if (verifyDuplicatedStoredSegments)
     				{
-    					logger.error("Verify failed for segment "+segmentDescriptor.getCASIdentifier()+" - reinserting");
-    					checkStore.storeSegment(segmentDescriptor);
+    					if (!checkStore.verifySegment(segmentDescriptor.getCASIdentifier()))
+    					{
+    						logger.error("Verify failed for segment "+segmentDescriptor.getCASIdentifier()+" - reinserting");
+    						checkStore.storeSegment(segmentDescriptor);
+    					}
     				}
     				dataID = checkResults.getInt("dataid");
     				do
@@ -1619,17 +1698,76 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
     
     public synchronized void storeMetaData(DBCASServerConnection connection, CASIDDataDescriptor metaDataDescriptor, int internalCollectionID) throws IOException
     {
+    	try
+    	{
+    		// TODO - handle meta data in a more sane way.  There needs to be reference counting, etc. on the data descriptor
+
+    		ResultSet mdSet = connection.getStatements().getRetrieveMetaData().retrieveMetaData(internalCollectionID);
+    		if (mdSet.next())
+    		{
+    			CASIdentifier casID = getCASIDFromResultSet(mdSet, "casid");
+    			int storeNum = mdSet.getInt("storenum");
+    			long dataID = mdSet.getLong("data_id");
+
+    			deleteFromCAS(connection, storeNum, casID, dataID);
+
+    			try
+    			{
+    				CASStore retrieveStore = connection.getStoreAtIndex(storeNum);
+    				if (retrieveStore == null)
+    					throw new IOException("Could not retrieve store "+internalCollectionID+" storeNum = "+storeNum);
+    				retrieveStore.deleteSegment(casID);
+    			}
+    			finally
+    			{
+    				mdSet.close();
+    			}
+    		}
+
+    		long dataID = findOrStoreDataDescriptor(connection, metaDataDescriptor);
+    		connection.getStatements().getSetMetaData().setMetaData(dataID, internalCollectionID);
+    	}
+    	catch (SQLException e)
+    	{
+    		throw new IOException("Got SQLException storing metadata");
+    	}
+    }
+    
+	public synchronized void removeMetaData(DBCASServerConnection connection, int internalCollectionID) throws IOException
+	{
         try
         {
-            long dataID = findOrStoreDataDescriptor(connection, metaDataDescriptor);
-            connection.getStatements().getSetMetaData().setMetaData(dataID, internalCollectionID);
+        	ResultSet mdSet = connection.getStatements().getRetrieveMetaData().retrieveMetaData(internalCollectionID);
+            if (mdSet.next())
+            {
+                CASIdentifier casID = getCASIDFromResultSet(mdSet, "casid");
+                int storeNum = mdSet.getInt("storenum");
+                long dataID = mdSet.getLong("data_id");
+                
+                deleteFromCAS(connection, storeNum, casID, dataID);
+
+				try
+				{
+					CASStore retrieveStore = connection.getStoreAtIndex(storeNum);
+					if (retrieveStore == null)
+						throw new IOException("Could not retrieve store "+internalCollectionID+" storeNum = "+storeNum);
+					retrieveStore.deleteSegment(casID);
+				}
+				finally
+				{
+					mdSet.close();
+				}
+            }
+        	// dataID 0 does not exist
+        	
+            connection.getStatements().getSetMetaData().setMetaData(0, internalCollectionID);
         }
         catch (SQLException e)
         {
             throw new IOException("Got SQLException storing metadata");
         }
-    }
-    
+	}    
+	
     public synchronized CASIDDataDescriptor retrieveMetaData(DBCASServerConnection connection, int internalCollectionID) throws IOException
     {
         try
@@ -1642,14 +1780,20 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
                 CASIDDataDescriptor returnDescriptor;
 				try
 				{
-					returnDescriptor = connection.getStoreAtIndex(storeNum).retrieveSegment(casID);
+					CASStore retrieveStore = connection.getStoreAtIndex(storeNum);
+					if (retrieveStore == null)
+						throw new IOException("Could not retrieve store "+internalCollectionID+" storeNum = "+storeNum);
+					returnDescriptor = retrieveStore.retrieveSegment(casID);
 				} catch (SegmentNotFound e)
 				{
 					// TODO This would be a good place to check a backup server
 					Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
 					throw new IOException("Could not find segment "+casID);
 				}
-                mdSet.close();
+				finally
+				{
+					mdSet.close();
+				}
                 return returnDescriptor;
             } else
             {
@@ -1668,14 +1812,16 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
 		return new CASIdentifier(mdSet.getBytes(field));
 	}
     
-	public synchronized boolean releaseSegment(DBCASServerConnection connection, CASSegmentID releaseID, int internalCollectionID) throws IOException
+	public synchronized boolean releaseSegment(DBCASServerConnection connection, ObjectID releaseID, int internalCollectionID) throws IOException
 	{
         try
         {
             ResultSet retrieveSet = connection.getStatements().getRetrieveSegmentByOID().retrieveSegmentByOID(releaseID, internalCollectionID);
-            if (retrieveSet.next())
+            while (retrieveSet.next())
             {
-            	int dataID = retrieveSet.getInt("dataid");
+            	long dataID = retrieveSet.getLong("dataid");
+            	long versionID = retrieveSet.getLong("versionid");
+            	connection.getStatements().getDeleteFromCASStatement().deleteFromCAS(internalCollectionID, releaseID, versionID);
             	ResultSet referencesResults = connection.getStatements().getGetReferencesForCAS().getReferencesForCAS(dataID);
             	if (referencesResults.next())
             	{
@@ -1684,8 +1830,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
             		{
                         CASIdentifier casID = getCASIDFromResultSet(retrieveSet, "casid");
                         int storeNum = retrieveSet.getInt("storenum");
-                        connection.getStatements().getRemoveCAS().removeCAS(dataID);
-            			connection.getStoreAtIndex(storeNum).deleteSegment(casID);
+                        deleteFromCAS(connection, storeNum, casID, dataID);
             		}
             	}
             	return true;
@@ -1698,6 +1843,12 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
         }
 		return false;
 	}
+
+	private void deleteFromCAS(DBCASServerConnection connection, int storeNum, CASIdentifier casID, long dataID) throws SQLException, IOException
+	{
+		connection.getStatements().getRemoveCAS().removeCAS(dataID);
+		connection.getStoreAtIndex(storeNum).deleteSegment(casID);
+	}
 	
 	public synchronized boolean releaseVersionedSegment(DBCASServerConnection connection, ObjectID releaseID, IndelibleVersion version, int internalCollectionID) throws IOException
 	{
@@ -1706,7 +1857,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
             ResultSet retrieveSet = connection.getStatements().getRetrieveSegmentByOIDExactVersionStatement().retrieveSegmentByOIDExactVersion(releaseID, version, internalCollectionID);
             if (retrieveSet.next())
             {
-            	int dataID = retrieveSet.getInt("id");
+            	long dataID = retrieveSet.getLong("id");
             	ResultSet referencesResults = connection.getStatements().getGetReferencesForCAS().getReferencesForCAS(dataID);
             	if (referencesResults.next())
             	{
@@ -1715,8 +1866,7 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
             		{
                         CASIdentifier casID = getCASIDFromResultSet(retrieveSet, "casid");
                         int storeNum = retrieveSet.getInt("storenum");
-                        connection.getStatements().getRemoveCAS().removeCAS(dataID);
-            			connection.getStoreAtIndex(storeNum).deleteSegment(casID);
+                        deleteFromCAS(connection, storeNum, casID, dataID);
             		}
             	}
             	return true;
@@ -2280,5 +2430,5 @@ public class DBCASServer extends IndelibleEntity implements CASServerInternal <D
 			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
 			throw new IOException("Got SQLException retrieving versions");
 		}	
-	}    
+	}
 }

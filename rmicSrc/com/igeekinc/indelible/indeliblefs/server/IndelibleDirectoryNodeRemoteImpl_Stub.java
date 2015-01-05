@@ -21,7 +21,7 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFileNodeRemote getChildNode(java.lang.String)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.IndelibleNodeInfo getChildNodeInfo(java.lang.String[])[]"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSForkRemote getFork(java.lang.String, boolean)"),
-	new java.rmi.server.Operation("java.util.HashMap getMetaDataResource(java.lang.String)"),
+	new java.rmi.server.Operation("java.util.Map getMetaDataResource(java.lang.String)"),
 	new java.rmi.server.Operation("int getNumChildren()"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote getObjectForVersion(com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.oid.IndelibleFSObjectID getObjectID()"),
@@ -37,11 +37,11 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
 	new java.rmi.server.Operation("java.lang.String listMetaDataResources()[]"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.core.IndelibleVersionIterator listVersions()"),
 	new java.rmi.server.Operation("void release()"),
-	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String, java.util.HashMap)"),
+	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String, java.util.Map)"),
 	new java.rmi.server.Operation("long totalLength()")
     };
     
-    private static final long interfaceHash = -5871887176642123365L;
+    private static final long interfaceHash = 1346330604920155154L;
     
     // constructors
     public IndelibleDirectoryNodeRemoteImpl_Stub() {
@@ -558,7 +558,7 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
     }
     
     // implementation of getMetaDataResource(String)
-    public java.util.HashMap getMetaDataResource(java.lang.String $param_String_1)
+    public java.util.Map getMetaDataResource(java.lang.String $param_String_1)
 	throws com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException, java.io.IOException, java.rmi.RemoteException
     {
 	try {
@@ -570,10 +570,10 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
 		throw new java.rmi.MarshalException("error marshalling arguments", e);
 	    }
 	    ref.invoke(call);
-	    java.util.HashMap $result;
+	    java.util.Map $result;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
-		$result = (java.util.HashMap) in.readObject();
+		$result = (java.util.Map) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling return", e);
 	    } catch (java.lang.ClassNotFoundException e) {
@@ -1001,8 +1001,8 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
 	}
     }
     
-    // implementation of setMetaDataResource(String, HashMap)
-    public com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String $param_String_1, java.util.HashMap $param_HashMap_2)
+    // implementation of setMetaDataResource(String, Map)
+    public com.igeekinc.indelible.indeliblefs.remote.IndelibleFSObjectRemote setMetaDataResource(java.lang.String $param_String_1, java.util.Map $param_Map_2)
 	throws com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException, java.io.IOException, java.rmi.RemoteException
     {
 	try {
@@ -1010,7 +1010,7 @@ public final class IndelibleDirectoryNodeRemoteImpl_Stub
 	    try {
 		java.io.ObjectOutput out = call.getOutputStream();
 		out.writeObject($param_String_1);
-		out.writeObject($param_HashMap_2);
+		out.writeObject($param_Map_2);
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.MarshalException("error marshalling arguments", e);
 	    }

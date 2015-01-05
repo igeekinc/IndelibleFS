@@ -28,7 +28,6 @@ import sun.rmi.server.UnicastRef;
 
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSManager;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
-import com.igeekinc.indelible.indeliblefs.datamover.MoverFuture;
 import com.igeekinc.indelible.indeliblefs.datamover.NetworkDataDescriptor;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
 import com.igeekinc.indelible.indeliblefs.security.IndelibleEntityAuthenticationClientRMIClientSocketFactory;
@@ -115,6 +114,6 @@ public class IndelibleFSServerImpl extends SSLUnicastObject implements
 	@Override
 	public InetSocketAddress [] getMoverAddresses(EntityID securityServerID) throws RemoteException
 	{
-		return DataMoverSource.getDataMoverSource().getHostPorts(securityServerID);
+		return DataMoverSource.getDataMoverSource().getListenNetworkAddresses(securityServerID);
 	}
 }

@@ -22,6 +22,7 @@ import java.rmi.server.RMIClientSocketFactory;
 import java.rmi.server.RMIServerSocketFactory;
 import java.rmi.server.UnicastRemoteObject;
 import java.util.HashMap;
+import java.util.Map;
 
 import com.igeekinc.indelible.indeliblefs.IndelibleFSObjectIF;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
@@ -61,13 +62,13 @@ public abstract class IndelibleFSObjectRemoteImpl extends UnicastRemoteObject im
         // TODO Auto-generated constructor stub
     }
 
-    public HashMap<String, Object> getMetaDataResource(String mdResourceName)
+    public Map<String, Object> getMetaDataResource(String mdResourceName)
             throws RemoteException, PermissionDeniedException, IOException
     {
         return coreObject.getMetaDataResource(mdResourceName);
     }
     
-    public IndelibleFSObjectRemote setMetaDataResource(String mdResourceName, HashMap<String, Object> resource)
+    public IndelibleFSObjectRemote setMetaDataResource(String mdResourceName, Map<String, Object> resource)
         throws RemoteException, PermissionDeniedException, IOException
     {
         IndelibleFSObjectIF newCoreObject = coreObject.setMetaDataResource(mdResourceName, resource);
@@ -106,7 +107,7 @@ public abstract class IndelibleFSObjectRemoteImpl extends UnicastRemoteObject im
 	@Override
 	public IndelibleVersion getVersion() throws RemoteException
 	{
-		return coreObject.getVersion();
+		return coreObject.getCurrentVersion();
 	}
 
 	public abstract IndelibleFSObjectRemoteImpl newObject(IndelibleFSObjectIF object, IndelibleFSServerConnectionImpl connection) throws RemoteException;

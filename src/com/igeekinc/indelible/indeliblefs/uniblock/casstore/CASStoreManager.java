@@ -96,11 +96,24 @@ class CASStoreReloadNewObjectsRunnable implements Runnable
 		{
 			Logger.getLogger(getClass()).error(new ErrorLogMessage("Reload new objects on store "+storeToReload.getCASStoreID()+" failed with exception"), t);
 		}
+		if (storeToReload.getStatus().equals(CASStoreStatus.kNeedsRebuild))
+		{
+			
+			try
+			{
+				Logger.getLogger(getClass()).error(new ErrorLogMessage("Reload new objects failed, rebuilding store"));
+				storeToReload.rebuild();
+			} catch (Throwable t)
+			{
+				Logger.getLogger(getClass()).error(new ErrorLogMessage("Rebuild of store "+storeToReload.getCASStoreID()+" failed with exception"), t);
+
+			}
+		}
 	}
 }
 public class CASStoreManager
 {
-	private static final int kFreeSpaceMargin = 10 * 1024 * 1024;
+	private static final int kFreeSpaceMargin = 500 * 1024 * 1024;
 	// CASStore is an interface and cannot have an initializer so we put it here
 	static public void initMappings()
 	{
@@ -274,11 +287,11 @@ public class CASStoreManager
 		return storeID;
 	}
 	
-	public synchronized CASStoreID initMapDBFSCASStore(File storeRoot)
+	public synchronized CASStoreID initMapDBFSCASStore(File dbDirPath, File storeRoot)
 	throws IOException
 	{
 		CASStoreID storeID = (CASStoreID) oidFactory.getNewOID(CASStore.class);
-		CASStore newStore = new MapDBFSCASStore(storeID, storeRoot);
+		CASStore newStore = new MapDBFSCASStore(storeID, dbDirPath, storeRoot);
 		addCASStore(newStore);
 		return storeID;
 	}
@@ -387,7 +400,7 @@ public class CASStoreManager
 	public static final String kDBUserName = "dbUser";
 	public static final String kDBPasswordName = "dbPassword";
 	public static final String kStorePathName = "storePath";
-
+	public static final String kDBPathName = "dbPath";
 	public static final String kAWSLoginName = "awsLogin";
 	public static final String kAWSPasswordName = "awsPassword";
 	public static final String kAWSRegionName = "awsRegion";
@@ -463,8 +476,11 @@ public class CASStoreManager
 						{
 							processedNums.add(storeNumStr);
 							String dbStorePath = initDBFSStoresProperties.getProperty(kInitMapDBFSStorePrefix+"."+storeNumStr+"."+kStorePathName);
+							String dbDirPath = initDBFSStoresProperties.getProperty(kInitMapDBFSStorePrefix+"."+storeNumStr+"."+kDBPathName, dbStorePath);
+
 							File storeRoot = new File(dbStorePath);
-							initMapDBFSCASStore(storeRoot);
+							File dbDir = new File(dbDirPath);
+							initMapDBFSCASStore(dbDir, storeRoot);
 						}
 					}
 				}

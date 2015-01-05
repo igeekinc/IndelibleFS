@@ -19,6 +19,7 @@ package com.igeekinc.indelible.indeliblefs.core;
 import java.io.IOException;
 import java.io.Serializable;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
 
 import org.apache.log4j.Logger;
@@ -41,19 +42,19 @@ public abstract class IndelibleFSObject implements Serializable, IndelibleFSObje
 	protected IndelibleFSObjectID objectID;
 	protected IndelibleVersion version;
     private transient boolean dirty; // Object has been modified and needs to be written out
-    private HashMap<String, HashMap<String, Object>> metadataHashmap;
+    private HashMap<String, Map<String, Object>> metadataHashmap;
     protected transient Logger logger = Logger.getLogger(getClass());
     
     protected IndelibleFSObject()
     {
-        metadataHashmap = new HashMap<String, HashMap<String, Object>>();
+        metadataHashmap = new HashMap<String, Map<String, Object>>();
     }
     
     protected IndelibleFSObject(IndelibleFSObjectID objectID, IndelibleVersion version)
     {
         this.objectID = objectID;
         this.version = version;
-        metadataHashmap = new HashMap<String, HashMap<String, Object>>();
+        metadataHashmap = new HashMap<String, Map<String, Object>>();
     }
     
     /* (non-Javadoc)
@@ -89,13 +90,12 @@ public abstract class IndelibleFSObject implements Serializable, IndelibleFSObje
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleFSObjectIF#getMetaDataResource(java.lang.String)
 	 */
     @Override
-	@SuppressWarnings("unchecked")
-    public HashMap<String, Object> getMetaDataResource(String mdResourceName)
+    public Map<String, Object> getMetaDataResource(String mdResourceName)
     throws PermissionDeniedException, IOException
     {
-        HashMap<String, Object>retrievedMap = metadataHashmap.get(mdResourceName);
+        Map<String, Object>retrievedMap = metadataHashmap.get(mdResourceName);
         if (retrievedMap != null)
-            return (HashMap<String, Object>)retrievedMap.clone();
+            return new HashMap<String, Object>(retrievedMap);
         return null;
     }
     
@@ -103,7 +103,7 @@ public abstract class IndelibleFSObject implements Serializable, IndelibleFSObje
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleFSObjectIF#setMetaDataResource(java.lang.String, java.util.HashMap)
 	 */
     @Override
-	public IndelibleFSObject setMetaDataResource(String mdResourceName, HashMap<String, Object> resources)
+	public IndelibleFSObject setMetaDataResource(String mdResourceName, Map<String, Object> resources)
     throws PermissionDeniedException, IOException
     {
         metadataHashmap.put(mdResourceName, resources);
@@ -148,7 +148,7 @@ public abstract class IndelibleFSObject implements Serializable, IndelibleFSObje
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleFSObjectIF#getVersion()
 	 */
     @Override
-	public IndelibleVersion getVersion()
+	public IndelibleVersion getCurrentVersion()
     {
     	return version;
     }

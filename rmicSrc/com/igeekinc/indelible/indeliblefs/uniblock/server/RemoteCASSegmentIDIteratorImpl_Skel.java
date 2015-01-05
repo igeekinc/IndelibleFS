@@ -9,11 +9,11 @@ public final class RemoteCASSegmentIDIteratorImpl_Skel
     private static final java.rmi.server.Operation[] operations = {
 	new java.rmi.server.Operation("void close()"),
 	new java.rmi.server.Operation("boolean hasNext()"),
-	new java.rmi.server.Operation("com.igeekinc.indelible.oid.CASSegmentID next()"),
+	new java.rmi.server.Operation("com.igeekinc.indelible.oid.ObjectID next()"),
 	new java.rmi.server.Operation("void remove()")
     };
     
-    private static final long interfaceHash = -5618111967574468873L;
+    private static final long interfaceHash = 2210115608068078655L;
     
     public java.rmi.server.Operation[] getOperations() {
 	return (java.rmi.server.Operation[]) operations.clone();
@@ -55,7 +55,7 @@ public final class RemoteCASSegmentIDIteratorImpl_Skel
 	case 2: // next()
 	{
 	    call.releaseInputStream();
-	    com.igeekinc.indelible.oid.CASSegmentID $result = server.next();
+	    com.igeekinc.indelible.oid.ObjectID $result = server.next();
 	    try {
 		java.io.ObjectOutput out = call.getResultStream(true);
 		out.writeObject($result);

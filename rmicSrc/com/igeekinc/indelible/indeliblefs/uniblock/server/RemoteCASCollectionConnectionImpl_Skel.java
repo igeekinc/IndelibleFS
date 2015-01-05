@@ -19,12 +19,12 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	new java.rmi.server.Operation("long getLastEventID()"),
 	new java.rmi.server.Operation("long getLastReplicatedEventID(com.igeekinc.indelible.oid.EntityID, com.igeekinc.indelible.oid.CASCollectionID)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor getMetaDataForReplication()"),
-	new java.rmi.server.Operation("java.util.HashMap getMetaDataResource(java.lang.String)"),
+	new java.rmi.server.Operation("java.util.Map getMetaDataResource(java.lang.String)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.oid.EntityID getMoverID()"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.events.RemoteIndelibleEventIterator getTransactionEventsAfterEventID(long, int)"),
 	new java.rmi.server.Operation("java.lang.String listMetaDataNames()[]"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.server.RemoteCASSegmentIDIterator listSegmentIDs()"),
-	new java.rmi.server.Operation("boolean releaseSegment(com.igeekinc.indelible.oid.CASSegmentID)"),
+	new java.rmi.server.Operation("boolean releaseSegment(com.igeekinc.indelible.oid.ObjectID)"),
 	new java.rmi.server.Operation("void repairSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo)"),
 	new java.rmi.server.Operation("void replicateMetaDataResource(com.igeekinc.indelible.indeliblefs.uniblock.CASIDDataDescriptor, com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEvent)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.CASIdentifier retrieveCASIdentifier(com.igeekinc.indelible.oid.CASSegmentID)"),
@@ -33,7 +33,7 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo retrieveSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo retrieveSegmentInfo(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)"),
 	new java.rmi.server.Operation("void rollback()"),
-	new java.rmi.server.Operation("void setMetaDataResource(java.lang.String, java.util.HashMap)"),
+	new java.rmi.server.Operation("void setMetaDataResource(java.lang.String, java.util.Map)"),
 	new java.rmi.server.Operation("void startReplicatedTransaction(com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent)"),
 	new java.rmi.server.Operation("void startTransaction()"),
 	new java.rmi.server.Operation("void storeReplicatedSegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.datamover.NetworkDataDescriptor, com.igeekinc.indelible.indeliblefs.uniblock.CASCollectionEvent)"),
@@ -42,7 +42,7 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	new java.rmi.server.Operation("boolean verifySegment(com.igeekinc.indelible.oid.ObjectID, com.igeekinc.indelible.indeliblefs.core.IndelibleVersion, com.igeekinc.indelible.indeliblefs.core.RetrieveVersionFlags)")
     };
     
-    private static final long interfaceHash = -8690896036000837086L;
+    private static final long interfaceHash = -1555822600103836272L;
     
     public java.rmi.server.Operation[] getOperations() {
 	return (java.rmi.server.Operation[]) operations.clone();
@@ -285,7 +285,7 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	    } finally {
 		call.releaseInputStream();
 	    }
-	    java.util.HashMap $result = server.getMetaDataResource($param_String_1);
+	    java.util.Map $result = server.getMetaDataResource($param_String_1);
 	    try {
 		java.io.ObjectOutput out = call.getResultStream(true);
 		out.writeObject($result);
@@ -357,12 +357,12 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	    break;
 	}
 	    
-	case 17: // releaseSegment(CASSegmentID)
+	case 17: // releaseSegment(ObjectID)
 	{
-	    com.igeekinc.indelible.oid.CASSegmentID $param_CASSegmentID_1;
+	    com.igeekinc.indelible.oid.ObjectID $param_ObjectID_1;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
-		$param_CASSegmentID_1 = (com.igeekinc.indelible.oid.CASSegmentID) in.readObject();
+		$param_ObjectID_1 = (com.igeekinc.indelible.oid.ObjectID) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling arguments", e);
 	    } catch (java.lang.ClassNotFoundException e) {
@@ -370,7 +370,7 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	    } finally {
 		call.releaseInputStream();
 	    }
-	    boolean $result = server.releaseSegment($param_CASSegmentID_1);
+	    boolean $result = server.releaseSegment($param_ObjectID_1);
 	    try {
 		java.io.ObjectOutput out = call.getResultStream(true);
 		out.writeBoolean($result);
@@ -565,14 +565,14 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	    break;
 	}
 	    
-	case 26: // setMetaDataResource(String, HashMap)
+	case 26: // setMetaDataResource(String, Map)
 	{
 	    java.lang.String $param_String_1;
-	    java.util.HashMap $param_HashMap_2;
+	    java.util.Map $param_Map_2;
 	    try {
 		java.io.ObjectInput in = call.getInputStream();
 		$param_String_1 = (java.lang.String) in.readObject();
-		$param_HashMap_2 = (java.util.HashMap) in.readObject();
+		$param_Map_2 = (java.util.Map) in.readObject();
 	    } catch (java.io.IOException e) {
 		throw new java.rmi.UnmarshalException("error unmarshalling arguments", e);
 	    } catch (java.lang.ClassNotFoundException e) {
@@ -580,7 +580,7 @@ public final class RemoteCASCollectionConnectionImpl_Skel
 	    } finally {
 		call.releaseInputStream();
 	    }
-	    server.setMetaDataResource($param_String_1, $param_HashMap_2);
+	    server.setMetaDataResource($param_String_1, $param_Map_2);
 	    try {
 		call.getResultStream(true);
 	    } catch (java.io.IOException e) {

@@ -320,7 +320,7 @@ public abstract class AbstractFSCASStore extends AbstractCASStore
 
 
 	protected CASStoreID	storeID;
-	protected File	storeRoot;
+	protected File	storeRoot, dbDir;
 	protected File	propertiesFile;
 	protected File	casStorageRoot;
 	protected long	nextDataID;
@@ -337,7 +337,7 @@ public abstract class AbstractFSCASStore extends AbstractCASStore
 		// TODO Auto-generated constructor stub
 	}
 	
-	public synchronized void rebuild() throws IOException
+	public void rebuild() throws IOException
 	{
 		setStatus(CASStoreStatus.kRebuilding);
 		int maxThreads = Runtime.getRuntime().availableProcessors()/2;	// Hyperthreading is lying to us!
@@ -435,7 +435,7 @@ public abstract class AbstractFSCASStore extends AbstractCASStore
 				{
 					try
 					{
-						Thread.sleep(100);
+						Thread.sleep(1000);	//	Let go of our locks
 					} catch (Exception e)
 					{
 						// TODO Auto-generated catch block

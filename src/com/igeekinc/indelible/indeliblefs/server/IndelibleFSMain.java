@@ -24,46 +24,43 @@ import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Serializable;
-import java.rmi.AlreadyBoundException;
-import java.rmi.NotBoundException;
-import java.rmi.RemoteException;
-import java.rmi.registry.LocateRegistry;
-import java.rmi.registry.Registry;
-import java.rmi.server.RMISocketFactory;
+import java.lang.management.ManagementFactory;
+import java.net.InetSocketAddress;
 import java.security.Security;
+
+import javax.management.MBeanServer;
+import javax.management.ObjectName;
 
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
 
-import sun.rmi.registry.RegistryImpl;
-import sun.rmi.server.UnicastServerRef;
-
-import com.igeekinc.indelible.indeliblefs.IndelibleFSClient;
+import com.igeekinc.firehose.AddressFilter;
+import com.igeekinc.firehose.FirehoseTarget;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSManager;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
-import com.igeekinc.indelible.indeliblefs.security.AuthenticatedServerImpl;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSFirehoseServer;
+import com.igeekinc.indelible.indeliblefs.jmx.IndelibleFSMgmt;
+import com.igeekinc.indelible.indeliblefs.security.AuthenticatedTargetSSLSetup;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
+import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationFirehoseServer;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServerCore;
-import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServerImpl;
-import com.igeekinc.indelible.indeliblefs.security.IndelibleEntityAuthenticationClientRMIClientSocketFactory;
-import com.igeekinc.indelible.indeliblefs.security.IndelibleEntityAuthenticationClientRMIServerSocketFactory;
 import com.igeekinc.indelible.indeliblefs.uniblock.casstore.CASStoreManager;
 import com.igeekinc.indelible.indeliblefs.uniblock.dbcas.DBCASServer;
-import com.igeekinc.indelible.indeliblefs.uniblock.server.RemoteCASServerImpl;
-import com.igeekinc.indelible.oid.EntityID;
+import com.igeekinc.indelible.indeliblefs.uniblock.firehose.CASServerFirehoseServer;
 import com.igeekinc.indelible.oid.GeneratorID;
 import com.igeekinc.indelible.oid.GeneratorIDFactory;
 import com.igeekinc.indelible.oid.ObjectIDFactory;
 import com.igeekinc.indelible.server.IndelibleServer;
 import com.igeekinc.indelible.server.IndelibleServerPreferences;
+import com.igeekinc.util.MonitoredProperties;
 import com.igeekinc.util.logging.ErrorLogMessage;
 import com.igeekinc.util.logging.FatalLogMessage;
-import com.igeekinc.util.logging.InfoLogMessage;
 import com.igeekinc.util.logging.WarnLogMessage;
-import com.igeekinc.util.remote.MultiHomeRMIClientSocketFactory;
 
 public class IndelibleFSMain extends IndelibleServer
 {
@@ -75,13 +72,15 @@ public class IndelibleFSMain extends IndelibleServer
     CASStoreManager casStoreManager;
     DBCASServer casServer;
     IndelibleFSManager fsManager;
-    IndelibleFSServerImpl fsServerImpl;
-    RemoteCASServerImpl casServerImpl;
     EntityAuthenticationServerCore localEntityAuthenticationServer;
-    private Registry entityAuthenticationRegistry;
+    EntityAuthenticationFirehoseServer entityAuthenticationNetworkServer;
     private ObjectIDFactory oidFactory;
-    
-    public static void main(String [] args) throws IOException, AlreadyBoundException, InterruptedException
+    @SuppressWarnings("unused")
+	private FirehoseTarget indelibleFSServerTarget, casServerTarget;	// We may not use it but we don't want to let go of it!
+    private IndelibleFSFirehoseServer indelibleFSServer;		// The Firehose server for IndelibleFS
+    private CASServerFirehoseServer casServerFirehoseServer;	// The Firehose server for CASServer
+    private int casServerPort = 50904;
+    public static void main(String [] args) throws IOException, InterruptedException
     {
     	try
     	{
@@ -107,7 +106,7 @@ public class IndelibleFSMain extends IndelibleServer
     
     public static final long kMinimumDirectMemory = 2L * 1024L * 1024L * 1024L;
     public IndelibleFSMain()
-    throws IOException, AlreadyBoundException
+    throws IOException
     {
         logger = Logger.getLogger(getClass());
         try
@@ -118,15 +117,6 @@ public class IndelibleFSMain extends IndelibleServer
 
             configureLogging(serverProperties);
             
-            if (sun.misc.VM.maxDirectMemory() < kMinimumDirectMemory)
-            {
-            	logger.fatal("Not enough directory memory allocated - minimum = "+kMinimumDirectMemory+" current = "+sun.misc.VM.maxDirectMemory());
-            }
-            else
-            {
-            	logger.info(new InfoLogMessage("Starting with direct memory {0}", new Serializable[]{sun.misc.VM.maxDirectMemory()}));
-            }
-            logger.warn(new WarnLogMessage("IndelibleServer registry started on port {0}", new Serializable[]{((UnicastServerRef)((RegistryImpl)serverRegistry).getRef()).getLiveRef().getPort()}));
             File preferencesDir = new File(serverProperties.getProperty(IndelibleServerPreferences.kPreferencesDirPropertyName));
             
             GeneratorID generatorID;
@@ -184,16 +174,13 @@ public class IndelibleFSMain extends IndelibleServer
             	logger.fatal(new FatalLogMessage("Caught unexpected error initializing Entity Authentication Client, exiting..."), t);
             	System.exit(1);
             }
-            // Entity authentication server is bound without SSL for the moment.
+
             if (localEntityAuthenticationServer != null)
-            {
-                EntityAuthenticationClient.getEntityAuthenticationClient().trustServer(localEntityAuthenticationServer);
-                EntityAuthenticationServerImpl entityAuthenticationServerImpl;
-            	entityAuthenticationServerImpl = new EntityAuthenticationServerImpl(localEntityAuthenticationServer, 0, new MultiHomeRMIClientSocketFactory(), RMISocketFactory.getDefaultSocketFactory());
+            {                
             	int registryPort = 0;
                 if (serverProperties.getProperty(EntityAuthenticationServer.kEntityAuthenticationServerRandomPortPropertyName, "Y").equals("Y"))
                 {
-                	logger.error(new ErrorLogMessage("EntityAuthenticationServer starting with random registry port"));
+                	logger.error(new ErrorLogMessage("EntityAuthenticationServer starting with random port"));
                 	registryPort = 0;
                 }
                 else
@@ -204,9 +191,18 @@ public class IndelibleFSMain extends IndelibleServer
                 }
 				try
 				{
-					entityAuthenticationRegistry = LocateRegistry.createRegistry(registryPort);
-					entityAuthenticationRegistry.bind(EntityAuthenticationServer.kIndelibleEntityAuthenticationServerRMIName, entityAuthenticationServerImpl);
-					int registryPortUsed = ((UnicastServerRef)((RegistryImpl)entityAuthenticationRegistry).getRef()).getLiveRef().getPort();
+					InetSocketAddress serverAddress = new InetSocketAddress(registryPort);
+					entityAuthenticationNetworkServer = new EntityAuthenticationFirehoseServer(localEntityAuthenticationServer, serverAddress);
+	                EntityAuthenticationClient.getEntityAuthenticationClient().trustServer(localEntityAuthenticationServer);
+					int registryPortUsed = entityAuthenticationNetworkServer.getListenAddresses(new AddressFilter()
+					{
+						
+						@Override
+						public boolean add(InetSocketAddress checkAddress)
+						{
+							return (!(checkAddress instanceof AFUNIXSocketAddress));
+						}
+					})[0].getPort();
 					if (bonjour != null)
 						bonjour.advertiseEntityAuthenticationServer(registryPortUsed);
 					logger.error(new ErrorLogMessage("EntityAuthenticationServer registry port = {0}", new Serializable[]{registryPortUsed}));
@@ -216,46 +212,57 @@ public class IndelibleFSMain extends IndelibleServer
 				}
             }
             
-            // Should have the CAS server and the entity authentication server and client configured by this point
-            DataMoverSource.init(casServer.getOIDFactory());   // TODO - move this someplace logical
-            DataMoverReceiver.init(casServer.getOIDFactory());
+            String moverPortStr = serverProperties.getProperty(IndelibleServerPreferences.kMoverPortPropertyName);
+            int moverPort = Integer.parseInt(moverPortStr);
             
-            fsManager = new IndelibleFSManager(casServer);
-            for (EntityAuthenticationServer bindServer:EntityAuthenticationClient.getEntityAuthenticationClient().listTrustedServers())
+            String localPortDirStr = serverProperties.getProperty(IndelibleServerPreferences.kLocalPortDirectory);
+            File localPortDir = new File(localPortDirStr);
+            if (localPortDir.exists() && !localPortDir.isDirectory())
             {
-                setupFSManagerForEntityAuthenticationServer(bindServer);
+            	localPortDir.delete();
             }
+            if (!localPortDir.exists())
+            {
+            	localPortDir.mkdirs();
+            }
+            File localPortSocketFile = new File(localPortDir, "dataMover");
+            // Should have the CAS server and the entity authentication server and client configured by this point
+            AFUNIXSocketAddress localDataMoverSocketAddr = new AFUNIXSocketAddress(localPortSocketFile, moverPort);
+            checkAFUnixSocket(localPortSocketFile, localDataMoverSocketAddr);
+            
+            DataMoverReceiver.init(casServer.getOIDFactory());
+            DataMoverSource.init(casServer.getOIDFactory(), new InetSocketAddress(moverPort),
+            		localDataMoverSocketAddr);   // TODO - move this someplace logical
+            
+            String advertiseMoverPortsStr = serverProperties.getProperty(IndelibleServerPreferences.kAdvertiseMoverAddressesPropertyName);
+            if (advertiseMoverPortsStr != null)
+            	DataMoverSource.getDataMoverSource().setAdvertiseAddresses(advertiseMoverPortsStr);
+            fsManager = new IndelibleFSManager(casServer);
+            indelibleFSServer = new IndelibleFSFirehoseServer(fsManager);
+            
+            AuthenticatedTargetSSLSetup sslSetup = new AuthenticatedTargetSSLSetup();
+
+            
+            InetSocketAddress casServerAddress = new InetSocketAddress(casServerPort);
+            casServerFirehoseServer = new CASServerFirehoseServer(casServer);
+            casServerTarget = new FirehoseTarget(casServerAddress, casServerFirehoseServer, null, sslSetup);
+            indelibleFSServer.setCASServerPort(casServerPort);
+            
+            InetSocketAddress serverAddress = new InetSocketAddress(serverPort);
+            indelibleFSServerTarget = new FirehoseTarget(serverAddress, indelibleFSServer, null, sslSetup);
+
+            
+            logger.warn(new WarnLogMessage("Starting managment interface"));
+            MBeanServer mbs = ManagementFactory.getPlatformMBeanServer(); 
+            ObjectName name = new ObjectName("com.igeekinc.indelible:type=IndelibleFSMgmt"); 
+            IndelibleFSMgmt mbean = new IndelibleFSMgmt(this); 
+            mbs.registerMBean(mbean, name); 
+            logger.warn(new WarnLogMessage("IndelibleServer started on port {0}", new Serializable[]{serverPort}));
         } catch (Throwable t)
         {
             Logger.getLogger(getClass()).fatal(new ErrorLogMessage("Caught exception during IndelibleFS initialization, exiting..."), t);
-        }
-    }
-    
-    @SuppressWarnings("unchecked")
-	void setupFSManagerForEntityAuthenticationServer(EntityAuthenticationServer curServer) throws RemoteException
-    {
-        EntityID entityAuthenticationServerID = curServer.getEntityID();
-        fsServerImpl = new IndelibleFSServerImpl(fsManager, 0, new IndelibleEntityAuthenticationClientRMIClientSocketFactory(entityAuthenticationServerID), new IndelibleEntityAuthenticationClientRMIServerSocketFactory(entityAuthenticationServerID));
-        casServerImpl = new RemoteCASServerImpl(casServer, 0, new IndelibleEntityAuthenticationClientRMIClientSocketFactory(entityAuthenticationServerID), new IndelibleEntityAuthenticationClientRMIServerSocketFactory(entityAuthenticationServerID));
-        fsServerImpl.setCASServer(casServerImpl);
-        AuthenticatedServerImpl<IndelibleFSServerImpl> fsServer = null;
-		try
-		{
-			fsServer = (AuthenticatedServerImpl<IndelibleFSServerImpl>) serverRegistry.lookup(IndelibleFSClient.kIndelibleFSServerRMIName);
-		} catch (NotBoundException e)
-		{
-			// Not a problem
-		}
-        boolean needsBinding = false;
-        if (fsServer == null)
-        {
-        	fsServer = new AuthenticatedServerImpl<IndelibleFSServerImpl>(0, new MultiHomeRMIClientSocketFactory(), RMISocketFactory.getDefaultSocketFactory());
-        	needsBinding = true;
-        }
-        fsServer.addServer(entityAuthenticationServerID, fsServerImpl);
-        if (needsBinding)
-        {
-        	serverRegistry.rebind(IndelibleFSClient.kIndelibleFSServerRMIName, fsServer);
+    		t.printStackTrace();
+    		System.exit(1);
         }
     }
     
@@ -306,15 +313,57 @@ public class IndelibleFSMain extends IndelibleServer
 	@Override
 	public void setLogFileLevelFromPrefs()
     {
-        if (IndelibleServerPreferences.getProperties().getProperty(IndelibleServerPreferences.kCreateVerboseLogFilesPropertyName, "N").equals("N")) //$NON-NLS-1$ //$NON-NLS-2$
-            rollingLog.setThreshold(Level.INFO);
-        else
-            rollingLog.setThreshold(Level.toLevel(IndelibleServerPreferences.getProperties().getProperty(IndelibleServerPreferences.kVerboseLogFileLevelPropertyName, "INFO"), Level.INFO)); //$NON-NLS-1$
+		rollingLog.setThreshold(Level.toLevel(IndelibleServerPreferences.getProperties().getProperty(IndelibleServerPreferences.kVerboseLogFileLevelPropertyName, "INFO"), Level.INFO)); //$NON-NLS-1$
     }
 
 	@Override
 	protected boolean shouldCreateRegistry()
 	{
-		return true;
+		return false;
 	}
+
+	@Override
+	public File getAdditionalLoggingConfigFile(
+			MonitoredProperties serverProperties)
+	{
+		return new File(serverProperties.getProperty(IndelibleServerPreferences.kPreferencesDirPropertyName),
+		        "indeliblefsLoggingOptions.properties");
+	}
+
+	public FirehoseTarget getIndelibleFSTarget()
+	{
+		return indelibleFSServerTarget;
+	}
+
+	@Override
+	public void dumpServer()
+	{
+		if (indelibleFSServer != null)
+		{
+			System.out.println(indelibleFSServer.dump());
+		}
+		try
+		{
+			System.out.println(DataMoverSource.getDataMoverSource().dump());
+		}
+		catch (InternalError e)
+		{
+			System.out.println("DataMoverSource not initialized\n");
+		}
+		try
+		{
+			System.out.println(DataMoverReceiver.getDataMoverReceiver().dump());
+		}
+		catch (InternalError e)
+		{
+			System.out.println("DataMoverReceiver not initialized\n");
+		}
+		
+		if (entityAuthenticationNetworkServer != null)
+		{
+			System.out.println(entityAuthenticationNetworkServer.dump());
+		}
+	}
+	
+	
 }

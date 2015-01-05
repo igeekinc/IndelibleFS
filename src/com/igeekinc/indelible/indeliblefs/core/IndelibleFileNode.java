@@ -20,7 +20,7 @@ import java.io.IOException;
 import java.io.Serializable;
 import java.lang.ref.WeakReference;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.log4j.Logger;
 
@@ -397,7 +397,7 @@ public class IndelibleFileNode extends IndelibleFSObject implements Serializable
 	 */
     @Override
     public IndelibleFileNode setMetaDataResource(String mdResourceName,
-            HashMap<String, Object> resources)
+            Map<String, Object> resources)
             throws PermissionDeniedException, IOException
     {
         if (mdResourceName.equals(kIndelibleFSMetaDataPropertyName))
@@ -417,7 +417,7 @@ public class IndelibleFileNode extends IndelibleFSObject implements Serializable
         long delta = newLength - oldLength;
         if (delta != 0)
         {
-            long oldTotalLength = totalLength;
+            //long oldTotalLength = totalLength;
             totalLength += delta;
             setDirty();
             IndelibleDirectoryNode parent;

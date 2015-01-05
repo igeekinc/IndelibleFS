@@ -21,6 +21,7 @@ import gnu.getopt.LongOpt;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.rmi.AlreadyBoundException;
 import java.rmi.registry.LocateRegistry;
 import java.rmi.registry.Registry;
@@ -35,8 +36,9 @@ import java.security.cert.CertificateException;
 import org.apache.log4j.BasicConfigurator;
 import org.apache.log4j.Level;
 import org.apache.log4j.Logger;
+import org.newsclub.net.unix.AFUNIXSocketAddress;
 
-import com.igeekinc.indelible.indeliblefs.IndelibleFSClient;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
@@ -132,8 +134,8 @@ public class DataMoverTargetMain
         GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
         GeneratorID testBaseID = genIDFactory.createGeneratorID();
         ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-        DataMoverSource.init(oidFactory);
         DataMoverReceiver.init(oidFactory);
+        DataMoverSource.init(oidFactory, new InetSocketAddress(0), new AFUNIXSocketAddress(new File("/tmp/dmtm-socket")));
         
         moverSession = DataMoverSource.getDataMoverSource().createDataMoverSession(securityServer.getEntityID());
         registry = LocateRegistry.createRegistry(registryPort);

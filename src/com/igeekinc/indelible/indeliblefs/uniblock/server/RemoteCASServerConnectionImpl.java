@@ -79,7 +79,7 @@ public class RemoteCASServerConnectionImpl extends SSLUnicastObject implements R
 	public RemoteCASCollectionConnection getCollection(CASCollectionID id)
 			throws CollectionNotFoundException, RemoteException
 	{
-		CASCollectionConnection localCollection = localConnection.getCollectionConnection(id);
+		CASCollectionConnection localCollection = localConnection.openCollectionConnection(id);
 		return new RemoteCASCollectionConnectionImpl(server, localConnection, localCollection, getClientSocketFactory(), getServerSocketFactory());
 	}
 
@@ -248,7 +248,7 @@ public class RemoteCASServerConnectionImpl extends SSLUnicastObject implements R
 	public InetSocketAddress[] getMoverAddresses(EntityID securityServerID)
 			throws RemoteException
 	{
-		return DataMoverSource.getDataMoverSource().getHostPorts(securityServerID);
+		return DataMoverSource.getDataMoverSource().getListenNetworkAddresses(securityServerID);
 	}
 
 	@Override

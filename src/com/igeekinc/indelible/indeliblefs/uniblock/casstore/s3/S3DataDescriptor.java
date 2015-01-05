@@ -204,4 +204,11 @@ public class S3DataDescriptor implements CASIDDataDescriptor
 			handler.failed(t, attachment);
 		}
 	}
+
+	@Override
+	public void release()
+	{
+		// No remote resources to release
+		
+	}
 }

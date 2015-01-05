@@ -19,7 +19,7 @@ package com.igeekinc.indelible.indeliblefs.uniblock.dbcas;
 import java.io.IOException;
 import java.io.Serializable;
 import java.rmi.RemoteException;
-import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
@@ -44,6 +44,7 @@ import com.igeekinc.indelible.indeliblefs.uniblock.CASStoreInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.CASSegmentID;
@@ -51,6 +52,7 @@ import com.igeekinc.indelible.oid.EntityID;
 import com.igeekinc.indelible.oid.ObjectID;
 import com.igeekinc.util.async.AsyncCompletion;
 import com.igeekinc.util.async.ComboFutureBase;
+import com.igeekinc.util.logging.DebugLogMessage;
 import com.igeekinc.util.logging.ErrorLogMessage;
 
 class DataSegmentInfo
@@ -80,18 +82,19 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
     private DBCASServerConnection serverConnection;
     private DBCASCollection collection;
 	private IndelibleEventSupport eventSupport;
+	protected Logger logger = Logger.getLogger(getClass());
 	
     DBCASCollectionConnection(DBCASCollection collection, DBCASServerConnection serverConnection)
     {
         this.collection = collection;
         this.serverConnection = serverConnection;
-		eventSupport = new IndelibleEventSupport(this);
+		eventSupport = new IndelibleEventSupport(this, serverConnection.getDispatcher());
 		collection.addConnection(this);
     }
 
-    public DBCASCollection getCollection()
+    public CASCollectionID getCollectionID()
     {
-    	return collection;
+    	return collection.getID();
     }
     
     /* (non-Javadoc)
@@ -116,7 +119,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
     
 	@Override
 	public void storeVersionedSegment(ObjectID id, CASIDDataDescriptor segmentDescriptor)
-	throws IOException
+	throws IOException, SegmentExists
 	{
 		collection.storeVersionedSegment(this, id, segmentDescriptor);
 	}
@@ -153,7 +156,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 			IndelibleVersion replicateVersion,
 			CASIDDataDescriptor sourceDescriptor,
 			CASCollectionEvent curCASEvent,
-			AsyncCompletion<Void, ? super A> completionHandler, A attachment)
+			AsyncCompletion<Void, A> completionHandler, A attachment)
 			throws IOException
 	{
 		if (getServerConnection().getVersionForTransaction() != null && !replicateVersion.equals(getServerConnection().getVersionForTransaction()))
@@ -172,7 +175,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 
 	@Override
 	public <A> void storeSegmentAsync(CASIDDataDescriptor sourceDescriptor,
-			AsyncCompletion<CASStoreInfo, ? super A> completionHandler,
+			AsyncCompletion<CASStoreInfo, A> completionHandler,
 			A attachment) throws IOException
 	{
 		collection.storeSegmentAsync(this, sourceDescriptor, completionHandler, attachment);
@@ -223,7 +226,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 	}
 
 	@Override
-	public boolean releaseSegment(CASSegmentID releaseID) throws IOException
+	public boolean releaseSegment(ObjectID releaseID) throws IOException
 	{
     	return collection.releaseSegment(this, releaseID);
 	}
@@ -244,7 +247,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 
     
     @Override
-	public HashMap<String, Serializable> getMetaDataResource(
+	public Map<String, Serializable> getMetaDataResource(
 			String mdResourceName) throws RemoteException,
 			PermissionDeniedException, IOException
 	{
@@ -253,13 +256,20 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 
 	@Override
 	public void setMetaDataResource(String mdResourceName,
-			HashMap<String, Serializable> resource) throws RemoteException,
+			Map<String, Serializable> resource) throws RemoteException,
 			PermissionDeniedException, IOException
 	{
 		collection.setMetaDataResource(this, mdResourceName, resource);
 	}
 
-    public CASServer getCASServer()
+	
+    @Override
+	public void removeMetaDataResouce(String mdResourceName) throws PermissionDeniedException, IOException
+	{
+		collection.removeMetaDataResource(this, mdResourceName);
+	}
+
+	public CASServer getCASServer()
     {
         return serverConnection.getServer();
     }
@@ -325,10 +335,12 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 	@Override
 	public IndelibleEventIterator getTransactionEventsAfterEventID(long eventID, int timeToWait) throws IOException
 	{
+		logger.debug(new DebugLogMessage("getTransactionEventsAfterEventID collection = "+getCollectionID()+" eventID = "+eventID+" timeToWait = "+timeToWait));
 		IndelibleEventIterator returnIterator = new CASCollectionEventsAfterEventIDIterator(this, eventID);
 		if (!returnIterator.hasNext())
 		{
 			returnIterator.close();
+			logger.debug(new DebugLogMessage("getTransactionEventsAfterEventID - no events available for collection = "+getCollectionID()+" after eventID = "+eventID+" waiting"));
 			WaitForEventsListener myListener = new WaitForEventsListener();
 			eventSupport.addListenerAfterID(myListener, eventID);
 			long timeToWakeup = System.currentTimeMillis() + timeToWait;
@@ -339,6 +351,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 			eventSupport.removeListener(myListener);
 			returnIterator = new CASCollectionEventsAfterEventIDIterator(this, eventID);
 		}
+		logger.debug(new DebugLogMessage("getTransactionEventsAfterEventID - returning iterator for collection = "+getCollectionID()+" after eventID = "+eventID+" hasNext = "+returnIterator.hasNext()));
 		return returnIterator;
 	}
 
@@ -439,7 +452,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 
 	@Override
 	public Future<DataVersionInfo> retrieveSegmentAsync(ObjectID segmentID)
-			throws IOException, SegmentNotFound
+			throws IOException
 	{
 		return retrieveSegmentAsync(segmentID, IndelibleVersion.kLatestVersion, RetrieveVersionFlags.kNearest);
 	}
@@ -447,7 +460,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 	@Override
 	public <A> void retrieveSegmentAsync(ObjectID segmentID,
 			AsyncCompletion<DataVersionInfo, A> completionHandler, A attachment)
-			throws IOException, SegmentNotFound
+			throws IOException
 	{
 		retrieveSegmentAsync(segmentID, IndelibleVersion.kLatestVersion, RetrieveVersionFlags.kNearest, completionHandler, attachment);
 	}
@@ -455,7 +468,7 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 	@Override
 	public Future<DataVersionInfo> retrieveSegmentAsync(ObjectID segmentID,
 			IndelibleVersion version, RetrieveVersionFlags flags)
-			throws IOException, SegmentNotFound
+			throws IOException
 	{
 		ComboFutureBase<DataVersionInfo>returnFuture = new ComboFutureBase<DataVersionInfo>();
 		retrieveSegmentAsync(segmentID, version, flags, returnFuture);
@@ -466,15 +479,22 @@ public class DBCASCollectionConnection extends BasicDataDescriptorFactory implem
 	public <A> void retrieveSegmentAsync(ObjectID segmentID,
 			IndelibleVersion version, RetrieveVersionFlags flags,
 			AsyncCompletion<DataVersionInfo, A> completionHandler, A attachment)
-			throws IOException, SegmentNotFound
+			throws IOException
 	{
 		ComboFutureBase<DataVersionInfo>returnFuture = new ComboFutureBase<DataVersionInfo>(completionHandler, attachment);
 		retrieveSegmentAsync(segmentID, version, flags, returnFuture);
 	}
 	
-	private void retrieveSegmentAsync(ObjectID segmentID, IndelibleVersion version, RetrieveVersionFlags flags, ComboFutureBase<DataVersionInfo>future) throws IOException, SegmentNotFound
+	private void retrieveSegmentAsync(ObjectID segmentID, IndelibleVersion version, RetrieveVersionFlags flags, ComboFutureBase<DataVersionInfo>future) throws IOException
 	{
-		DataVersionInfo result = retrieveSegment(segmentID, version, flags);
-		future.completed(result, null);
+		try
+		{
+			DataVersionInfo result = retrieveSegment(segmentID, version, flags);
+			future.completed(result, null);
+		}
+		catch(Throwable t)
+		{
+			future.failed(t, null);
+		}
 	}
 }

@@ -20,7 +20,6 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import org.apache.log4j.Logger;
 import org.perf4j.log4j.Log4JStopWatch;
@@ -124,6 +123,10 @@ class CollectionListener implements IndelibleEventListener
 							segmentCreatedWatch.stop();
 							break;
 						case kSegmentReleased:
+							break;
+						case kTransactionCommited:
+							break;
+						default:
 							break;
 						}
 					}

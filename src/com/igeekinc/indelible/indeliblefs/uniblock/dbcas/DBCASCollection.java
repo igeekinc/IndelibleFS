@@ -25,6 +25,7 @@ import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.concurrent.Future;
 
 import org.apache.log4j.Logger;
@@ -49,6 +50,7 @@ import com.igeekinc.indelible.indeliblefs.uniblock.SegmentCreatedEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.SegmentReleasedEvent;
 import com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.CASSegmentID;
@@ -90,6 +92,39 @@ class StoreVersionedSegmentFuture extends ComboFutureBase<Void>
 	}
 }
 
+class StoreReplicatedSegmentFuture extends ComboFutureBase<Void>
+{
+	private DBCASCollectionConnection connection;
+	private CASCollectionEvent sourceEvent;
+	public StoreReplicatedSegmentFuture(DBCASCollectionConnection connection, CASCollectionEvent sourceEvent)
+	{
+		this.connection = connection;
+		this.sourceEvent = sourceEvent;
+	}
+	
+	public <A>StoreReplicatedSegmentFuture(DBCASCollectionConnection connection, CASCollectionEvent sourceEvent,
+			AsyncCompletion<Void, ? super A>completionHandler, A attachment)
+	{
+		super(completionHandler, attachment);
+		this.connection = connection;
+		this.sourceEvent = sourceEvent;
+	}
+	@Override
+	public synchronized void completed(Void result, Object attachment)
+	{
+		try
+		{
+			connection.logEvent(sourceEvent);
+			super.completed(result, attachment);
+		} catch (Throwable t)
+		{
+			if (t instanceof SegmentExists)
+				super.completed(result, attachment);	// If it already exists and we're trying to replicate it, just ignore it
+			super.failed(t, attachment);
+		}
+		
+	}
+}
 class StoreSegmentFuture extends ComboFutureBase<CASStoreInfo>
 {
 	AsyncCompletion<CASStoreInfo, Object> completionHandler;
@@ -143,7 +178,7 @@ public class DBCASCollection implements CASCollection
 		return returnInfo;
 	}
 	
-    public void storeVersionedSegment(DBCASCollectionConnection connection, ObjectID id, CASIDDataDescriptor segmentDescriptor) throws IOException
+    public void storeVersionedSegment(DBCASCollectionConnection connection, ObjectID id, CASIDDataDescriptor segmentDescriptor) throws IOException, SegmentExists
     {
     	connection.getServerConnection().storeVersionedSegment(id, segmentDescriptor, internalCollectionID);
 		SegmentCreatedEvent event = new SegmentCreatedEvent(id, connection.getServerConnection().getServerID());
@@ -158,6 +193,7 @@ public class DBCASCollection implements CASCollection
 	 * @param segmentDescriptor
 	 * @param sourceEvent
 	 * @throws IOException 
+	 * @throws SegmentExists 
 	 */
 	public void storeReplicatedSegment(
 			DBCASCollectionConnection connection,
@@ -168,7 +204,15 @@ public class DBCASCollection implements CASCollection
 			throw new IllegalArgumentException("sourceEvent is not a SegmentCreated event");
 		if (sourceEvent.getEventID() < 0 || sourceEvent.getTimestamp() < 0)
 			throw new IllegalArgumentException("Replicated events must have event id and timestamp set");
-    	connection.getServerConnection().storeVersionedSegment(replicateSegmentID, segmentDescriptor, internalCollectionID);
+    	try
+		{
+			connection.getServerConnection().storeVersionedSegment(replicateSegmentID, segmentDescriptor, internalCollectionID);
+		} catch (SegmentExists e)
+		{
+			segmentDescriptor.release();
+			// Ignore 
+			Logger.getLogger(getClass()).debug("Segment already exists, ignoring");
+		}
 		connection.logEvent(sourceEvent);
 	}
 	
@@ -260,7 +304,7 @@ public class DBCASCollection implements CASCollection
 		connection.getServerConnection().repairSegment(connection, repairSegmentID, transactionVersion, masterData, internalCollectionID);
 	}
 	
-	public boolean releaseSegment(DBCASCollectionConnection connection, CASSegmentID releaseID) throws IOException
+	public boolean releaseSegment(DBCASCollectionConnection connection, ObjectID releaseID) throws IOException
 	{
     	boolean successful = connection.getServerConnection().releaseSegment(releaseID, internalCollectionID);
     	SegmentReleasedEvent event = new SegmentReleasedEvent(releaseID, connection.getServerConnection().getServerID());
@@ -285,25 +329,25 @@ public class DBCASCollection implements CASCollection
 		return returnVals;
 	}
 	
-    public synchronized HashMap<String, Serializable> getMetaDataResource(DBCASCollectionConnection connection, String mdResourceName)
+    public synchronized Map<String, Serializable> getMetaDataResource(DBCASCollectionConnection connection, String mdResourceName)
     throws PermissionDeniedException, IOException
     {
-    	HashMap<String, HashMap<String, Serializable>>metadataHashmap = getMetaDataHashMap(connection);
+    	HashMap<String, Map<String, Serializable>>metadataHashmap = getMetaDataHashMap(connection);
     	if (metadataHashmap != null)
     	{
-    		HashMap<String, Serializable>retrievedMap = metadataHashmap.get(mdResourceName);
+    		Map<String, Serializable>retrievedMap = metadataHashmap.get(mdResourceName);
     		if (retrievedMap != null)
-    			return (HashMap<String, Serializable>)retrievedMap.clone();
+    			return new HashMap<String, Serializable>(retrievedMap);
     	}
         return null;
     }
     
-    public synchronized void setMetaDataResource(DBCASCollectionConnection connection, String mdResourceName, HashMap<String, Serializable> resources)
+    public synchronized void setMetaDataResource(DBCASCollectionConnection connection, String mdResourceName, Map<String, Serializable> resources)
     throws PermissionDeniedException, IOException
     {
-    	HashMap<String, HashMap<String, Serializable>>metadataHashmap = getMetaDataHashMap(connection);
+    	HashMap<String, Map<String, Serializable>>metadataHashmap = getMetaDataHashMap(connection);
     	if (metadataHashmap == null)
-    		metadataHashmap = new HashMap<String, HashMap<String, Serializable>>();
+    		metadataHashmap = new HashMap<String, Map<String, Serializable>>();
         metadataHashmap.put(mdResourceName, resources);
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         ObjectOutputStream mdOutStream = new ObjectOutputStream(baos);
@@ -314,10 +358,28 @@ public class DBCASCollection implements CASCollection
         storeMetaData(connection, mdDataDesciptor);
     }
     
+    
+	public void removeMetaDataResource(DBCASCollectionConnection connection, String mdResourceName) throws PermissionDeniedException, IOException
+	{
+		HashMap<String, Map<String, Serializable>>metadataHashmap = getMetaDataHashMap(connection);
+    	if (metadataHashmap == null)
+    		return;
+        metadataHashmap.remove(mdResourceName);
+        if (!metadataHashmap.isEmpty())
+        {
+        	ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        	ObjectOutputStream mdOutStream = new ObjectOutputStream(baos);
+        	mdOutStream.writeObject(metadataHashmap);
+        	mdOutStream.close();
+        	baos.close();
+        	CASIDMemoryDataDescriptor mdDataDesciptor = new CASIDMemoryDataDescriptor(baos.toByteArray());
+        	storeMetaData(connection, mdDataDesciptor);
+        }
+	}
 	public String[] listMetaDataNames(DBCASCollectionConnection connection) throws PermissionDeniedException, IOException
 	{
 		String [] metaDataNames = new String[0];
-    	HashMap<String, HashMap<String, Serializable>>metaDataHashmap = getMetaDataHashMap(connection);
+    	HashMap<String, Map<String, Serializable>>metaDataHashmap = getMetaDataHashMap(connection);
     	if (metaDataHashmap != null)
     	{
     		metaDataNames = metaDataHashmap.keySet().toArray(metaDataNames);
@@ -326,7 +388,7 @@ public class DBCASCollection implements CASCollection
 	}
 
 
-    private synchronized HashMap<String, HashMap<String, Serializable>> getMetaDataHashMap(DBCASCollectionConnection connection)
+    private synchronized HashMap<String, Map<String, Serializable>> getMetaDataHashMap(DBCASCollectionConnection connection)
     	    throws PermissionDeniedException, IOException
     {
     	CASIDDataDescriptor mdData = retrieveMetaData(connection);
@@ -339,7 +401,7 @@ public class DBCASCollection implements CASCollection
     			Object mdObject = mdis.readObject();
     			if (mdObject != null && mdObject instanceof HashMap)
     			{
-    				HashMap<String, HashMap<String, Serializable>>metadataHashmap = (HashMap<String, HashMap<String, Serializable>>)mdObject;
+    				HashMap<String, Map<String, Serializable>>metadataHashmap = (HashMap<String, Map<String, Serializable>>)mdObject;
     				return metadataHashmap;
     			}
     		} catch (ClassNotFoundException e)

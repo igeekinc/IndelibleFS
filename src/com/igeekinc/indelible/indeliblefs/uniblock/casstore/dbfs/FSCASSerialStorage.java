@@ -155,6 +155,9 @@ public class FSCASSerialStorage extends BasicDataDescriptorFactory
     	ByteBuffer writeBuffer = ByteBuffer.allocate((int)segmentDescriptor.getLength());
     	future.setWriteBuffer(writeBuffer);
     	segmentDescriptor.getDataAsync(writeBuffer, 0, writeBuffer.capacity(), true, null, future);
+    	CASIdentifier checkIdentifier = new CASIdentifier(writeBuffer.array());
+    	if (!checkIdentifier.equals(segmentDescriptor.getCASIdentifier()))
+    		throw new IOException("checkIdentifier does not match CASIDDataDescriptor cas identifier");
     }
     
     /**

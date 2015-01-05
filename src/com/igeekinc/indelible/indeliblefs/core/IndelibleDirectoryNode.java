@@ -23,6 +23,8 @@ import java.rmi.RemoteException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Hashtable;
+import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 
@@ -52,7 +54,6 @@ import com.igeekinc.util.logging.ErrorLogMessage;
 
 class CreateChildFileAsyncFuture extends ComboFutureBase<CreateFileInfo>
 {	
-	@SuppressWarnings("unchecked")
 	public <A> CreateChildFileAsyncFuture(AsyncCompletion<CreateFileInfo, ? super A>completionHandler, A attachment)
 	{
 		super(completionHandler, attachment);
@@ -124,64 +125,9 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleDirectoryNodeIF#createChildFile(java.lang.String, java.util.HashMap, boolean)
 	 */
     @Override
-	public CreateFileInfo createChildFile(String name, HashMap<String, CASIDDataDescriptor>initialForkData, boolean exclusive)
+	public CreateFileInfo createChildFile(String name, Map<String, CASIDDataDescriptor>initialForkData, boolean exclusive)
     throws IOException, PermissionDeniedException, FileExistsException, RemoteException
     {
-    	/*
-    	logger.debug(new DebugLogMessage("createChildFile called on {0} to create child ''{1}'' with initialForkData", getObjectID(), name));
-    	boolean tempTransactionOpen = false;
-    	if (!volume.getConnection().inTransaction())
-    	{
-    		// Create a transaction for this operation and be sure to commit/rollback at exit
-    		volume.getConnection().startTransaction();
-    		tempTransactionOpen = true;
-    	}
-    	try
-    	{
-    		IndelibleFileNode newFile = createChildCore(name, exclusive);
-    		// TODO - figure out if these semantics are reasonable.  Perhaps createChild should simply always be
-    		// exclusive (fail if file already exists) and we should add a new retrieve + create call
-    		for (String existingFork:newFile.listForkNames())
-    		{
-    			try
-				{
-					newFile.deleteFork(existingFork);
-				} catch (ForkNotFoundException e)
-				{
-					Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-				}
-    		}
-    		for (String curForkName:initialForkData.keySet())
-    		{
-    			IndelibleFSForkIF curFork;
-    			try
-    			{
-    				curFork = newFile.getFork(curForkName, true);
-    			} catch (ForkNotFoundException e)
-    			{
-    				Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-    				throw new IOException("Could not open fork "+curForkName);
-    			}
-    			curFork.writeDataDescriptor(0, initialForkData.get(curForkName));
-    			curFork.flush();
-    		}
-    		modified();;
-    		CreateFileInfo returnInfo = new CreateFileInfo(this, newFile);
-    		if (tempTransactionOpen)
-    		{
-    			volume.getConnection().commit();
-    			tempTransactionOpen = false;
-    		}
-    		return returnInfo;
-    	}
-    	finally
-    	{
-    		if (tempTransactionOpen)
-    		{
-    			volume.getConnection().rollback();
-    		}
-    	}
-    	*/
     	Future<CreateFileInfo>waitFuture = createChildFileAsync(name, initialForkData, exclusive);
     	try
 		{
@@ -206,7 +152,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
     
     @Override
 	public Future<CreateFileInfo> createChildFileAsync(String name,
-			HashMap<String, CASIDDataDescriptor> initialForkData,
+			Map<String, CASIDDataDescriptor> initialForkData,
 			boolean exclusive) throws IOException, PermissionDeniedException,
 			FileExistsException, RemoteException
 	{
@@ -217,7 +163,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 
 	@Override
 	public <A> void createChildFileAsync(String name,
-			HashMap<String, CASIDDataDescriptor> initialForkData,
+			Map<String, CASIDDataDescriptor> initialForkData,
 			boolean exclusive,
 			AsyncCompletion<CreateFileInfo, ? super A> completionHandler,
 			A attachment) throws IOException, PermissionDeniedException,
@@ -231,13 +177,13 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 	{
 		private IndelibleDirectoryNode parent;
 		private boolean tempTransactionOpen;
-		private HashMap<String, CASIDDataDescriptor> initialForkData;
+		private Map<String, CASIDDataDescriptor> initialForkData;
 		private CreateChildFileAsyncFuture future;
 		int finishedForks = 0;
 		private IndelibleFileNode newFile;
 		private Throwable writeException = null;
 		
-		public CreateChildFileCompletionHandler(IndelibleDirectoryNode parent, HashMap<String, CASIDDataDescriptor> initialForkData, boolean tempTransactionOpen, CreateChildFileAsyncFuture future)
+		public CreateChildFileCompletionHandler(IndelibleDirectoryNode parent, Map<String, CASIDDataDescriptor> initialForkData, boolean tempTransactionOpen, CreateChildFileAsyncFuture future)
 		{
 			this.parent = parent;
 			this.initialForkData = initialForkData;
@@ -263,18 +209,26 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 						Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
 					}
 				}
-				for (String curForkName:initialForkData.keySet())
+				Set<String> forkNamesSet = initialForkData.keySet();
+				if (forkNamesSet.size() > 0)
 				{
-					IndelibleFSForkIF curFork;
-					try
+					for (String curForkName:forkNamesSet)
 					{
-						curFork = newFile.getFork(curForkName, true);
-					} catch (ForkNotFoundException e)
-					{
-						Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
-						throw new IOException("Could not open fork "+curForkName);
+						IndelibleFSForkIF curFork;
+						try
+						{
+							curFork = newFile.getFork(curForkName, true);
+						} catch (ForkNotFoundException e)
+						{
+							Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+							throw new IOException("Could not open fork "+curForkName);
+						}
+						curFork.writeDataDescriptorAsync(0, initialForkData.get(curForkName), new CreateChildFileCompletionHandler2(this, curFork, curForkName), null);
 					}
-					curFork.writeDataDescriptorAsync(0, initialForkData.get(curForkName), new CreateChildFileCompletionHandler2(this, curFork, curForkName), null);
+				}
+				else
+				{
+					allForksWritten();	// No forks, how strange
 				}
 				
 			} catch (PermissionDeniedException e)
@@ -371,7 +325,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 		
 	}
 	private void createChildFileAsync(String name,
-			HashMap<String, CASIDDataDescriptor> initialForkData,
+			Map<String, CASIDDataDescriptor> initialForkData,
 			boolean exclusive, CreateChildFileAsyncFuture future) throws IOException, PermissionDeniedException,
 			FileExistsException, RemoteException
 	{
@@ -451,7 +405,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 		
 	}
 	
-	private <A>void createChildCoreAsync(String name, boolean exclusive, AsyncCompletion<IndelibleFileNode, A>completionHandler, A attachment)
+	public <A>void createChildCoreAsync(String name, boolean exclusive, AsyncCompletion<IndelibleFileNode, A>completionHandler, A attachment)
             throws FileExistsException, IOException
     {
         IndelibleFSObjectID childObjectID = children.get(name);
@@ -504,7 +458,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
     		String [] mdResourceNames = sourceFile.listMetaDataResources();
     		for (String curMDResourceName:mdResourceNames)
     		{
-    			HashMap<String, Object>curMD = sourceFile.getMetaDataResource(curMDResourceName);
+    			Map<String, Object>curMD = sourceFile.getMetaDataResource(curMDResourceName);
     			newFile.setMetaDataResource(curMDResourceName, curMD);
     		}
     		modified();;
@@ -812,10 +766,14 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 	 * @see com.igeekinc.indelible.indeliblefs.core.IndelibleDirectoryNodeIF#getChildNode(java.lang.String)
 	 */
     @Override
-	public synchronized IndelibleFileNode getChildNode(String name)
+	public IndelibleFileNode getChildNode(String name)
     throws IOException, ObjectNotFoundException
     {
-        IndelibleFSObjectID childID = children.get(name);
+        IndelibleFSObjectID childID;
+		synchronized (this) 
+		{
+			childID = children.get(name);
+		}
         if (childID == null)
         	throw new ObjectNotFoundException();
         return(volume.getObjectByID(childID));
@@ -867,7 +825,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 			IndelibleFSObjectID childID = children.get(curChildName);
 			if (childID != null)
 			{
-				HashMap<String, HashMap<String, Object>> curChildMetaData = new HashMap<String, HashMap<String,Object>>();
+				HashMap<String, Map<String, Object>> curChildMetaData = new HashMap<String, Map<String,Object>>();
 				if (mdToRetrieve != null)
 				{
 					try
@@ -877,7 +835,7 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 						{
 							for (String curMDName:mdToRetrieve)
 							{
-								HashMap<String,Object> curMD = curChildNode.getMetaDataResource(curMDName);
+								Map<String,Object> curMD = curChildNode.getMetaDataResource(curMDName);
 								if (curMD != null)
 									curChildMetaData.put(curMDName, curMD);
 							}
@@ -897,6 +855,19 @@ public class IndelibleDirectoryNode extends IndelibleFileNode implements Indelib
 		return returnInfo;
 	}
 	
+	@Override
+	public Future<IndelibleNodeInfo[]> getChildNodeInfoAsync(String[] mdToRetrieve) throws IOException, PermissionDeniedException, RemoteException
+	{
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public <A> void getChildNodeInfoAsync(String[] mdToRetrieve, AsyncCompletion<IndelibleNodeInfo[], ? super A> completionHandler, A attachment)
+			throws IOException, PermissionDeniedException, RemoteException
+	{
+		throw new UnsupportedOperationException();
+	}
+
 	public IndelibleDirectoryNode getVersion(IndelibleVersion version,
 			RetrieveVersionFlags flags) throws IOException
 	{

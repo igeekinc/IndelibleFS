@@ -521,7 +521,7 @@ public class MapDBFSCASStoreTest extends TestCase
 		if (testStoreDir.exists())
 			assertTrue(testStoreDir.delete());
 		assertTrue(testStoreDir.mkdir());
-		MapDBFSCASStore testStore = new MapDBFSCASStore((CASStoreID) oidFactory.getNewOID(CASStore.class), testStoreDir);
+		MapDBFSCASStore testStore = new MapDBFSCASStore((CASStoreID) oidFactory.getNewOID(CASStore.class), testStoreDir, testStoreDir);
 		return testStore;
 	}
 }

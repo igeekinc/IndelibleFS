@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Set;
 
+import org.apache.log4j.Logger;
+
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSTransaction;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
@@ -31,6 +33,7 @@ import com.igeekinc.indelible.indeliblefs.events.IndelibleEvent;
 import com.igeekinc.indelible.indeliblefs.events.IndelibleEventIterator;
 import com.igeekinc.indelible.indeliblefs.events.IndelibleEventListener;
 import com.igeekinc.indelible.indeliblefs.events.IndelibleEventSupport;
+import com.igeekinc.indelible.indeliblefs.events.MultipleQueueDispatcher;
 import com.igeekinc.indelible.indeliblefs.security.AuthenticationFailureException;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
 import com.igeekinc.indelible.indeliblefs.security.SessionAuthentication;
@@ -42,6 +45,7 @@ import com.igeekinc.indelible.oid.CASCollectionID;
 import com.igeekinc.indelible.oid.EntityID;
 import com.igeekinc.indelible.oid.ObjectID;
 import com.igeekinc.util.datadescriptor.DataDescriptor;
+import com.igeekinc.util.logging.ErrorLogMessage;
 
 public class CASServerConnection implements CASServerConnectionIF
 {
@@ -55,6 +59,7 @@ public class CASServerConnection implements CASServerConnectionIF
     private SessionAuthentication sessionAuthentication;
     private IndelibleEventSupport eventSupport;
     private IndelibleVersion versionForTransaction;
+	private MultipleQueueDispatcher	dispatcher	= new MultipleQueueDispatcher();
     
     protected CASServerConnection(CASServerInternal<? extends CASServerConnectionIF> server, EntityID openingEntity)
     {
@@ -63,7 +68,7 @@ public class CASServerConnection implements CASServerConnectionIF
         serverEventLogForTransaction = new ArrayList<CASServerEvent>();
         connectionCollections = new HashMap<CASCollectionID, CASCollectionConnection>();
         dataMoverSession = DataMoverSource.getDataMoverSource().createDataMoverSession(server.getSecurityServerID());
-        eventSupport = new IndelibleEventSupport(this);
+        eventSupport = new IndelibleEventSupport(this, dispatcher);
     }
     
     protected CASServerConnection(CASServerInternal<? extends CASServerConnectionIF> server, EntityAuthentication openingEntity)
@@ -73,7 +78,7 @@ public class CASServerConnection implements CASServerConnectionIF
         serverEventLogForTransaction = new ArrayList<CASServerEvent>();
         connectionCollections = new HashMap<CASCollectionID, CASCollectionConnection>();
         dataMoverSession = DataMoverSource.getDataMoverSource().createDataMoverSession(server.getSecurityServerID());
-        eventSupport = new IndelibleEventSupport(this);
+        eventSupport = new IndelibleEventSupport(this, dispatcher);
         try
         {
         	sessionAuthentication = dataMoverSession.addAuthorizedClient(openingEntity);
@@ -111,12 +116,12 @@ public class CASServerConnection implements CASServerConnectionIF
 	 * @see com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnectionIF#getCollectionConnection(com.igeekinc.indelible.oid.CASCollectionID)
 	 */
     @Override
-	public synchronized CASCollectionConnection getCollectionConnection(CASCollectionID id) throws CollectionNotFoundException
+	public synchronized CASCollectionConnection openCollectionConnection(CASCollectionID id) throws CollectionNotFoundException
     {
     	CASCollectionConnection returnCollection = connectionCollections.get(id);
     	if (returnCollection == null)
     	{
-    		returnCollection = server.getCollection((CASServerConnectionIF)this, id);
+    		returnCollection = server.openCollection((CASServerConnectionIF)this, id);
     		connectionCollections.put(id,  returnCollection);
     	}
     	return returnCollection;
@@ -129,7 +134,7 @@ public class CASServerConnection implements CASServerConnectionIF
 	public synchronized CASCollectionConnection createNewCollection() throws IOException
     {
     	CASCollectionConnection returnConnection = server.createNewCollection(this);
-    	connectionCollections.put(returnConnection.getCollection().getID(),  returnConnection);
+    	connectionCollections.put(returnConnection.getCollectionID(),  returnConnection);
     	return returnConnection;
     }
     
@@ -140,7 +145,7 @@ public class CASServerConnection implements CASServerConnectionIF
     	CASCollectionConnection returnConnection = server.addCollection(this, addCollectionID);
     	synchronized(this)
     	{
-    		connectionCollections.put(returnConnection.getCollection().getID(),  returnConnection);
+    		connectionCollections.put(returnConnection.getCollectionID(),  returnConnection);
     	}
     	return returnConnection;
 	}
@@ -151,7 +156,14 @@ public class CASServerConnection implements CASServerConnectionIF
     @Override
 	public EntityID getServerID()
     {
-        return server.getServerID();
+        try
+		{
+			return server.getServerID();
+		} catch (IOException e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+			return null;
+		}
     }
     
 	@Override
@@ -462,5 +474,16 @@ public class CASServerConnection implements CASServerConnectionIF
 			throws IOException, RemoteException, AuthenticationFailureException
 	{
 		return;	// Well, we could do something here I suppose but this isn't really for local usage
+	}
+
+	public MultipleQueueDispatcher getDispatcher()
+	{
+		return dispatcher;
+	}
+
+	@Override
+	public void deleteCollection(CASCollectionID id) throws CollectionNotFoundException, IOException
+	{
+		server.deleteCollection(this, id);
 	}
 }

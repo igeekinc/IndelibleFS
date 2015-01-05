@@ -17,6 +17,7 @@
 package com.igeekinc.indelible.indeliblefs;
 
 import java.io.File;
+import java.net.InetSocketAddress;
 import java.util.Date;
 
 import org.apache.log4j.Logger;
@@ -24,7 +25,7 @@ import org.apache.log4j.PropertyConfigurator;
 
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverReceiver;
 import com.igeekinc.indelible.indeliblefs.datamover.DataMoverSource;
-import com.igeekinc.indelible.indeliblefs.proxies.IndelibleFSServerProxy;
+import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationClient;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthenticationServer;
 import com.igeekinc.indelible.indeliblefs.uniblock.CASServerConnectionIF;
@@ -61,7 +62,7 @@ public class PrepareForDirectIOTest extends iGeekTestCase
 
 		EntityAuthenticationClient.getEntityAuthenticationClient().trustServer(securityServer);
 		IndelibleFSClient.start(null, serverProperties);
-		IndelibleFSServerProxy[] servers = new IndelibleFSServerProxy[0];
+		IndelibleFSServer[] servers = new IndelibleFSServer[0];
 
 		while(servers.length == 0)
 		{
@@ -69,15 +70,15 @@ public class PrepareForDirectIOTest extends iGeekTestCase
 			if (servers.length == 0)
 				Thread.sleep(1000);
 		}
-		IndelibleFSServerProxy fsServer = servers[0];
+		IndelibleFSServer fsServer = servers[0];
 
 		IndelibleFSClient.connectToServer("share1.igeekinc.com", 50901);
-		IndelibleFSServerProxy remoteServer = null;
+		IndelibleFSServer remoteServer = null;
 
 		while (remoteServer == null)
 		{
 			servers = IndelibleFSClient.listServers();
-			for (IndelibleFSServerProxy checkServer:servers)
+			for (IndelibleFSServer checkServer:servers)
 			{
 				String checkHostName = checkServer.getServerAddress().getHostName();
 				if (checkHostName.equals("share1.igeekinc.com") || checkHostName.equals("ec2-54-249-114-82.ap-northeast-1.compute.amazonaws.com"))
@@ -92,8 +93,8 @@ public class PrepareForDirectIOTest extends iGeekTestCase
 		GeneratorIDFactory genIDFactory = new GeneratorIDFactory();
 		GeneratorID testBaseID = genIDFactory.createGeneratorID();
 		ObjectIDFactory oidFactory = new ObjectIDFactory(testBaseID);
-		DataMoverSource.init(oidFactory);
 		DataMoverReceiver.init(oidFactory);
+		DataMoverSource.init(oidFactory, new InetSocketAddress(0), null);
 		
 		CASServerConnectionIF fsCASServer = fsServer.openCASServer();
 		CASServerConnectionIF remoteCASServer = remoteServer.openCASServer();

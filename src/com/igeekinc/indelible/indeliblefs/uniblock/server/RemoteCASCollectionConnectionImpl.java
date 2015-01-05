@@ -19,7 +19,9 @@ package com.igeekinc.indelible.indeliblefs.uniblock.server;
 import java.io.IOException;
 import java.io.Serializable;
 import java.rmi.RemoteException;
-import java.util.HashMap;
+import java.util.Map;
+
+import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSTransaction;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleVersion;
@@ -45,6 +47,7 @@ import com.igeekinc.indelible.indeliblefs.uniblock.CASStoreInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.DataVersionInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.SegmentInfo;
 import com.igeekinc.indelible.indeliblefs.uniblock.TransactionCommittedEvent;
+import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentExists;
 import com.igeekinc.indelible.indeliblefs.uniblock.exceptions.SegmentNotFound;
 import com.igeekinc.indelible.indeliblefs.uniblock.remote.AsyncStoreReplicatedSegmentCommandBlock;
 import com.igeekinc.indelible.indeliblefs.uniblock.remote.RemoteCASServer;
@@ -55,6 +58,7 @@ import com.igeekinc.indelible.oid.ObjectID;
 import com.igeekinc.util.async.RemoteAsyncCommandBlock;
 import com.igeekinc.util.async.RemoteAsyncCompletionStatus;
 import com.igeekinc.util.async.RemoteAsyncManager;
+import com.igeekinc.util.logging.ErrorLogMessage;
 
 public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implements
 		RemoteCASCollectionConnection
@@ -78,7 +82,7 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 	@Override
 	public CASCollectionID getID() throws RemoteException
 	{
-		return localCollectionConnection.getCollection().getID();
+		return localCollectionConnection.getCollectionID();
 	}
 
 	@Override
@@ -97,7 +101,14 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 			throws IOException, RemoteException
 	{
 		NetworkDataDescriptor returnNetworkDescriptor = null;
-		DataVersionInfo localDataVersionInfo = localCollectionConnection.retrieveSegment(segmentID);
+		DataVersionInfo localDataVersionInfo = null;
+		try
+		{
+			localDataVersionInfo = localCollectionConnection.retrieveSegment(segmentID);
+		} catch (SegmentNotFound e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+		}
 		if (localDataVersionInfo != null)
 			returnNetworkDescriptor = localConnection.getDataMoverSession().registerDataDescriptor(localDataVersionInfo.getDataDescriptor());
 		return new DataVersionInfo(returnNetworkDescriptor, localDataVersionInfo.getVersion());
@@ -110,7 +121,14 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 			throws RemoteException, IOException
 	{
 		NetworkDataDescriptor returnNetworkDescriptor = null;
-		DataVersionInfo localDataVersionInfo = localCollectionConnection.retrieveSegment(segmentID, version, flags);
+		DataVersionInfo localDataVersionInfo = null;
+		try
+		{
+			localDataVersionInfo = localCollectionConnection.retrieveSegment(segmentID, version, flags);
+		} catch (SegmentNotFound e)
+		{
+			Logger.getLogger(getClass()).error(new ErrorLogMessage("Caught exception"), e);
+		}
 		if (localDataVersionInfo != null)
 			returnNetworkDescriptor = localConnection.getDataMoverSession().registerDataDescriptor(localDataVersionInfo.getDataDescriptor());
 		return new DataVersionInfo(returnNetworkDescriptor, localDataVersionInfo.getVersion());
@@ -147,7 +165,7 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 
 	@Override
 	public void storeVersionedSegment(ObjectID id, NetworkDataDescriptor segmentDescriptor)
-			throws IOException, RemoteException
+			throws IOException, RemoteException, SegmentExists
 	{
 		localCollectionConnection.storeVersionedSegment(id, segmentDescriptor);
 	}
@@ -162,7 +180,7 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 	}
 
 	@Override
-	public boolean releaseSegment(CASSegmentID releaseID) throws IOException,
+	public boolean releaseSegment(ObjectID releaseID) throws IOException,
 			RemoteException
 	{
 		return localCollectionConnection.releaseSegment(releaseID);
@@ -176,7 +194,7 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 	}
 
 	@Override
-	public HashMap<String, Serializable> getMetaDataResource(
+	public Map<String, Serializable> getMetaDataResource(
 			String mdResourceName) throws RemoteException,
 			PermissionDeniedException, IOException
 	{
@@ -185,7 +203,7 @@ public class RemoteCASCollectionConnectionImpl extends SSLUnicastObject implemen
 
 	@Override
 	public void setMetaDataResource(String mdResourceName,
-			HashMap<String, Serializable> resource) throws RemoteException,
+			Map<String, Serializable> resource) throws RemoteException,
 			PermissionDeniedException, IOException
 	{
 		localCollectionConnection.setMetaDataResource(mdResourceName, resource);

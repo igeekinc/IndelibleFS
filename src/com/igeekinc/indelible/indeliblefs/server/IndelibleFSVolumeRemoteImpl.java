@@ -21,7 +21,7 @@ import java.rmi.RemoteException;
 import java.rmi.server.RMIClientSocketFactory;
 import java.rmi.server.RMIServerSocketFactory;
 import java.rmi.server.UnicastRemoteObject;
-import java.util.HashMap;
+import java.util.Map;
 
 import com.igeekinc.indelible.indeliblefs.CreateFileInfo;
 import com.igeekinc.indelible.indeliblefs.DeleteFileInfo;
@@ -30,7 +30,6 @@ import com.igeekinc.indelible.indeliblefs.IndelibleFSVolumeIF;
 import com.igeekinc.indelible.indeliblefs.IndelibleFileNodeIF;
 import com.igeekinc.indelible.indeliblefs.IndelibleSymlinkNodeIF;
 import com.igeekinc.indelible.indeliblefs.MoveObjectInfo;
-import com.igeekinc.indelible.indeliblefs.core.IndelibleDirectoryNode;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFSVolume;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleFileNode;
 import com.igeekinc.indelible.indeliblefs.core.IndelibleSnapshotInfo;
@@ -148,7 +147,7 @@ public class IndelibleFSVolumeRemoteImpl extends UnicastRemoteObject implements
         localVolume.setVolumeName(volumeName);
     }
 
-    public HashMap<String, Object> getMetaDataResource(String mdResourceName)
+    public Map<String, Object> getMetaDataResource(String mdResourceName)
             throws RemoteException, PermissionDeniedException, IOException
     {
         return localVolume.getMetaDataResource(mdResourceName);
@@ -166,7 +165,7 @@ public class IndelibleFSVolumeRemoteImpl extends UnicastRemoteObject implements
     }
 
     public IndelibleFSVolumeRemote setMetaDataResource(String mdResourceName,
-            HashMap<String, Object> resources) throws RemoteException,
+            Map<String, Object> resources) throws RemoteException,
             PermissionDeniedException, IOException
     {
         return new IndelibleFSVolumeRemoteImpl(localVolume.setMetaDataResource(mdResourceName, resources), connection);
@@ -193,7 +192,7 @@ public class IndelibleFSVolumeRemoteImpl extends UnicastRemoteObject implements
 	@Override
 	public IndelibleVersion getVersion() throws RemoteException
 	{
-		return localVolume.getVersion();
+		return localVolume.getCurrentVersion();
 	}
 
 	@Override
