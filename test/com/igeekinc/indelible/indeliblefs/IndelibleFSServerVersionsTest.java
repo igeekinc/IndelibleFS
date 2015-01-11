@@ -43,10 +43,6 @@ import com.igeekinc.indelible.indeliblefs.exceptions.ForkNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.ObjectNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
 import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSClient;
-import com.igeekinc.indelible.indeliblefs.firehose.IndelibleFSFirehoseClient;
-import com.igeekinc.indelible.indeliblefs.remote.CreateDirectoryInfoRemote;
-import com.igeekinc.indelible.indeliblefs.remote.CreateFileInfoRemote;
-import com.igeekinc.indelible.indeliblefs.remote.IndelibleDirectoryNodeRemote;
 import com.igeekinc.indelible.indeliblefs.remote.IndelibleFSForkRemoteInputStream;
 import com.igeekinc.indelible.indeliblefs.remote.IndelibleFSForkRemoteOutputStream;
 import com.igeekinc.indelible.indeliblefs.security.EntityAuthentication;
@@ -187,12 +183,12 @@ public class IndelibleFSServerVersionsTest extends TestCase
     public void testVersionedTree() throws Exception
     {
     	connection.startTransaction();
-    	IndelibleDirectoryNodeRemote testRoot = createSmallDirTree();
+    	IndelibleDirectoryNodeIF testRoot = createSmallDirTree();
     	connection.commit();
     	
     	
     }
-	private IndelibleDirectoryNodeRemote createSmallDirTree() throws IOException,
+	private IndelibleDirectoryNodeIF createSmallDirTree() throws IOException,
 			PermissionDeniedException, RemoteException, FileExistsException,
 			ForkNotFoundException, ObjectNotFoundException {
 		Date now = new Date();
@@ -202,13 +198,13 @@ public class IndelibleFSServerVersionsTest extends TestCase
 
         for (int dirNum =0 ;dirNum < 3; dirNum++)
         {
-        	IndelibleDirectoryNodeRemote testDir = (IndelibleDirectoryNodeRemote) testVolume.getObjectByPath(testDirPath);
+        	IndelibleDirectoryNodeIF testDir = (IndelibleDirectoryNodeIF)testVolume.getObjectByPath(testDirPath);
         	FilePath curDirPath = testDirPath.getChild("test"+dirNum);
-        	CreateDirectoryInfoRemote curDirInfo = testDir.createChildDirectory(curDirPath.getName());
-        	IndelibleDirectoryNodeRemote curDir = (IndelibleDirectoryNodeRemote) testVolume.getObjectByPath(curDirPath);
+        	CreateDirectoryInfo curDirInfo = testDir.createChildDirectory(curDirPath.getName());
+        	IndelibleDirectoryNodeIF curDir = (IndelibleDirectoryNodeIF) testVolume.getObjectByPath(curDirPath);
         	FilePath subDirPath = curDirPath.getChild("sub-"+dirNum);
-        	CreateDirectoryInfoRemote subDirInfo = curDir.createChildDirectory(subDirPath.getName());
-        	IndelibleDirectoryNodeRemote subDir = (IndelibleDirectoryNodeRemote) testVolume.getObjectByPath(subDirPath);
+        	CreateDirectoryInfo subDirInfo = curDir.createChildDirectory(subDirPath.getName());
+        	IndelibleDirectoryNodeIF subDir = (IndelibleDirectoryNodeIF) testVolume.getObjectByPath(subDirPath);
         	String name = "testfile-"+dirNum;
         	/*
             CreateFileInfoRemote testInfo = subDir.createChildFile(name);
@@ -225,9 +221,9 @@ public class IndelibleFSServerVersionsTest extends TestCase
         	CASIDMemoryDataDescriptor dataDescriptor = new CASIDMemoryDataDescriptor(baos.toByteArray());
         	HashMap<String, CASIDDataDescriptor>initialForkData = new HashMap<String, CASIDDataDescriptor>();
         	initialForkData.put("data", dataDescriptor);
-        	CreateFileInfoRemote testInfo = subDir.createChildFile(name, initialForkData, true);
+        	CreateFileInfo testInfo = subDir.createChildFile(name, initialForkData, true);
         }
-        return (IndelibleDirectoryNodeRemote) testVolume.getObjectByPath(testDirPath);
+        return (IndelibleDirectoryNodeIF) testVolume.getObjectByPath(testDirPath);
 	}
 	
 	/*

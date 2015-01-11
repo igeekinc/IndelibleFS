@@ -32,7 +32,6 @@ import com.igeekinc.indelible.indeliblefs.IndelibleDirectoryNodeIF;
 import com.igeekinc.indelible.indeliblefs.IndelibleFileNodeIF;
 import com.igeekinc.indelible.indeliblefs.exceptions.ObjectNotFoundException;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.remote.IndelibleDirectoryNodeRemote;
 import com.igeekinc.util.ClientFile;
 import com.igeekinc.util.ClientFileMetaData;
 import com.igeekinc.util.FileLikeFilenameFilter;
@@ -153,7 +152,7 @@ public class IndelibleFSClientFile extends ClientFile
     @Override
     public ClientFile[] listClientFiles(FilenameFilter filter)
     {
-        if (core instanceof IndelibleDirectoryNodeRemote)
+        if (core instanceof IndelibleDirectoryNodeIF)
         {
         	IndelibleDirectoryNodeIF dirNode = (IndelibleDirectoryNodeIF)core;
             try
@@ -187,7 +186,7 @@ public class IndelibleFSClientFile extends ClientFile
 
     public String[] list(FileLikeFilenameFilter filter) throws IOException
     {
-        if (core instanceof IndelibleDirectoryNodeRemote)
+        if (core instanceof IndelibleDirectoryNodeIF)
         {
         	IndelibleDirectoryNodeIF dirNode = (IndelibleDirectoryNodeIF)core;
             try

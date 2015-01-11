@@ -9,6 +9,7 @@ Indelible FS is a distributed, scalable storage management system.  Indelible FS
 * Replication
 * Object storage
 * Network APIs
+* Scalability
 
 Additional modules provide:
 

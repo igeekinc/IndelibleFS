@@ -17,14 +17,12 @@
 package com.igeekinc.indelible.indeliblefs.io;
 
 import java.io.IOException;
-import java.rmi.RemoteException;
 
 import org.apache.log4j.Logger;
 
 import com.igeekinc.indelible.indeliblefs.IndelibleDirectoryNodeIF;
 import com.igeekinc.indelible.indeliblefs.IndelibleFSVolumeIF;
 import com.igeekinc.indelible.indeliblefs.exceptions.PermissionDeniedException;
-import com.igeekinc.indelible.indeliblefs.remote.IndelibleFSVolumeRemote;
 import com.igeekinc.util.ClientFile;
 import com.igeekinc.util.FilePath;
 import com.igeekinc.util.User;
